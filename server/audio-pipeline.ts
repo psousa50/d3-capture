@@ -88,10 +88,42 @@ export class AudioPipeline {
     });
 
     this.ws.on("message", (data: Buffer) => {
+      try {
+        const text = data.toString("utf-8");
+        if (text.startsWith("{")) {
+          const msg = JSON.parse(text);
+          if (msg.type === "text-input") {
+            console.log("[text-input]", msg.data.slice(0, 80));
+            this.handleTextInput(msg.data);
+            return;
+          }
+        }
+      } catch {}
+
       if (this.deepgramWs?.readyState === WebSocket.OPEN) {
         this.deepgramWs.send(data);
       }
     });
+  }
+
+  private handleTextInput(text: string) {
+    const now = Date.now();
+    const transcript = {
+      chunks: [{ text, isFinal: true, timestamp: now }],
+      fullText: text,
+      startTime: now,
+      endTime: now,
+    };
+
+    this.ws.send(
+      JSON.stringify({
+        type: "live-transcript",
+        data: { text, isFinal: true, speaker: 0 },
+      })
+    );
+
+    this.contextManager.addTranscript(transcript);
+    this.orchestrator.trigger();
   }
 
   stop() {

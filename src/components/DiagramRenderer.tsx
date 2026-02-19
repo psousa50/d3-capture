@@ -2,12 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 
-export function DiagramRenderer({ content, updating }: { content: string; updating: boolean }) {
+export function DiagramRenderer({ content }: { content: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
+  const lastContentRef = useRef<string>("");
 
   useEffect(() => {
-    if (!content || !containerRef.current || updating) return;
+    if (!content || !containerRef.current || content === lastContentRef.current) return;
 
     let cancelled = false;
 
@@ -30,6 +31,7 @@ export function DiagramRenderer({ content, updating }: { content: string; updati
       const { svg } = await mermaid.render(id, cleaned);
       if (!cancelled && containerRef.current) {
         containerRef.current.innerHTML = svg;
+        lastContentRef.current = content;
         setError(null);
       }
     }
@@ -39,9 +41,9 @@ export function DiagramRenderer({ content, updating }: { content: string; updati
       if (!cancelled) setError("Invalid diagram syntax");
     });
     return () => { cancelled = true; };
-  }, [content, updating]);
+  }, [content]);
 
-  if (!content) {
+  if (!content && !lastContentRef.current) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-zinc-600">
         No diagram generated yet
@@ -51,7 +53,7 @@ export function DiagramRenderer({ content, updating }: { content: string; updati
 
   if (error) {
     return (
-      <div className="p-4">
+      <div className="h-full overflow-y-auto p-4">
         <p className="mb-2 text-sm text-amber-400">{error}</p>
         <pre className="rounded bg-zinc-900 p-3 text-xs text-zinc-400 overflow-auto">
           {content}
@@ -63,7 +65,7 @@ export function DiagramRenderer({ content, updating }: { content: string; updati
   return (
     <div
       ref={containerRef}
-      className="flex h-full items-center justify-center overflow-auto p-4"
+      className="h-full overflow-auto p-4"
     />
   );
 }

@@ -16,7 +16,7 @@ export function MarkdownRenderer({
   }
 
   return (
-    <div className="prose prose-invert prose-sm max-w-none overflow-y-auto p-4">
+    <div className="prose prose-invert prose-sm h-full max-w-none overflow-y-auto p-4">
       <div
         dangerouslySetInnerHTML={{
           __html: markdownToHtml(content),

@@ -6,7 +6,7 @@ import { ArtefactTabs } from "../components/ArtefactTabs";
 import { MeetingControls } from "../components/MeetingControls";
 
 export default function Home() {
-  const { status, transcript, artefacts, error, elapsed, startMeeting, stopMeeting } =
+  const { status, transcript, artefacts, error, elapsed, startMeeting, stopMeeting, sendText } =
     useMeeting();
 
   if (status === "idle") {
@@ -55,6 +55,7 @@ export default function Home() {
         error={error}
         onStart={startMeeting}
         onStop={stopMeeting}
+        onSendText={sendText}
       />
     </div>
   );

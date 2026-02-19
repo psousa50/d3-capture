@@ -1,11 +1,10 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { MeetingWebSocket, LiveTranscript, ServerMessage } from "./websocket-client";
+import { MeetingWebSocket, type ServerMessage } from "./websocket-client";
 import { AudioCapture } from "./audio-capture";
 
 export type MeetingStatus = "idle" | "connecting" | "recording" | "error";
-export type ArtefactType = "diagram" | "spec" | "stories";
 
 interface TranscriptEntry {
   text: string;
@@ -13,19 +12,45 @@ interface TranscriptEntry {
   isFinal: boolean;
 }
 
-interface ArtefactState {
+export interface ArtefactState {
   content: string;
   updating: boolean;
   pendingContent: string;
 }
 
+export interface DiagramState extends ArtefactState {
+  label: string;
+}
+
+export interface MeetingArtefacts {
+  spec: ArtefactState;
+  stories: ArtefactState;
+  diagrams: Record<string, DiagramState>;
+  diagramsUpdating: boolean;
+}
+
+const DIAGRAM_LABELS: Record<string, string> = {
+  "c4-system": "C4 System Context",
+  "c4-container": "C4 Container",
+  sequence: "Sequence",
+  erd: "ERD",
+  flowchart: "Flowchart",
+};
+
+function diagramLabel(subType: string): string {
+  return DIAGRAM_LABELS[subType] ?? subType;
+}
+
+const EMPTY_ARTEFACT: ArtefactState = { content: "", updating: false, pendingContent: "" };
+
 export function useMeeting() {
   const [status, setStatus] = useState<MeetingStatus>("idle");
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
-  const [artefacts, setArtefacts] = useState<Record<ArtefactType, ArtefactState>>({
-    diagram: { content: "", updating: false, pendingContent: "" },
-    spec: { content: "", updating: false, pendingContent: "" },
-    stories: { content: "", updating: false, pendingContent: "" },
+  const [artefacts, setArtefacts] = useState<MeetingArtefacts>({
+    spec: { ...EMPTY_ARTEFACT },
+    stories: { ...EMPTY_ARTEFACT },
+    diagrams: {},
+    diagramsUpdating: false,
   });
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
@@ -50,49 +75,115 @@ export function useMeeting() {
         });
         break;
 
-      case "artefact-start":
-        setArtefacts((prev) => ({
-          ...prev,
-          [message.data.artefactType]: {
-            ...prev[message.data.artefactType as ArtefactType],
-            updating: true,
-            pendingContent: "",
-          },
-        }));
+      case "artefact-start": {
+        const key = message.data.artefactType;
+        if (key === "diagram") {
+          setArtefacts((prev) => ({
+            ...prev,
+            diagramsUpdating: true,
+          }));
+        } else if (key.startsWith("diagram:")) {
+          const subType = key.slice("diagram:".length);
+          setArtefacts((prev) => ({
+            ...prev,
+            diagrams: {
+              ...prev.diagrams,
+              [subType]: {
+                content: "",
+                updating: true,
+                pendingContent: "",
+                label: diagramLabel(subType),
+              },
+            },
+          }));
+        } else {
+          setArtefacts((prev) => ({
+            ...prev,
+            [key]: { ...prev[key as "spec" | "stories"], updating: true, pendingContent: "" },
+          }));
+        }
         break;
+      }
 
-      case "artefact-chunk":
-        setArtefacts((prev) => ({
-          ...prev,
-          [message.data.artefactType]: {
-            ...prev[message.data.artefactType as ArtefactType],
-            pendingContent:
-              prev[message.data.artefactType as ArtefactType].pendingContent +
-              (message.data.chunk ?? ""),
-          },
-        }));
+      case "artefact-chunk": {
+        const key = message.data.artefactType;
+        if (key.startsWith("diagram:")) {
+          const subType = key.slice("diagram:".length);
+          setArtefacts((prev) => ({
+            ...prev,
+            diagrams: {
+              ...prev.diagrams,
+              [subType]: {
+                ...prev.diagrams[subType],
+                pendingContent: prev.diagrams[subType].pendingContent + (message.data.chunk ?? ""),
+              },
+            },
+          }));
+        } else {
+          setArtefacts((prev) => ({
+            ...prev,
+            [key]: {
+              ...prev[key as "spec" | "stories"],
+              pendingContent:
+                prev[key as "spec" | "stories"].pendingContent + (message.data.chunk ?? ""),
+            },
+          }));
+        }
         break;
+      }
 
-      case "artefact-complete":
-        setArtefacts((prev) => ({
-          ...prev,
-          [message.data.artefactType]: {
-            content: message.data.content ?? "",
-            updating: false,
-            pendingContent: "",
-          },
-        }));
+      case "artefact-complete": {
+        const key = message.data.artefactType;
+        if (key === "diagram") {
+          setArtefacts((prev) => ({ ...prev, diagramsUpdating: false }));
+        } else if (key.startsWith("diagram:")) {
+          const subType = key.slice("diagram:".length);
+          setArtefacts((prev) => ({
+            ...prev,
+            diagrams: {
+              ...prev.diagrams,
+              [subType]: {
+                ...prev.diagrams[subType],
+                content: message.data.content ?? "",
+                updating: false,
+                pendingContent: "",
+              },
+            },
+          }));
+        } else {
+          setArtefacts((prev) => ({
+            ...prev,
+            [key]: {
+              content: message.data.content ?? "",
+              updating: false,
+              pendingContent: "",
+            },
+          }));
+        }
         break;
+      }
 
-      case "artefact-error":
-        setArtefacts((prev) => ({
-          ...prev,
-          [message.data.artefactType]: {
-            ...prev[message.data.artefactType as ArtefactType],
-            updating: false,
-          },
-        }));
+      case "artefact-error": {
+        const key = message.data.artefactType;
+        if (key === "diagram") {
+          setArtefacts((prev) => ({ ...prev, diagramsUpdating: false }));
+        } else if (key.startsWith("diagram:")) {
+          const subType = key.slice("diagram:".length);
+          setArtefacts((prev) => ({
+            ...prev,
+            diagrams: {
+              ...prev.diagrams,
+              [subType]: { ...prev.diagrams[subType], updating: false },
+            },
+          }));
+        } else {
+          setArtefacts((prev) => ({
+            ...prev,
+            [key]: { ...prev[key as "spec" | "stories"], updating: false },
+          }));
+        }
         break;
+      }
 
       case "error":
         setError(message.data);
@@ -126,6 +217,10 @@ export function useMeeting() {
     }
   }, [handleMessage]);
 
+  const sendText = useCallback((text: string) => {
+    wsRef.current?.sendText(text);
+  }, []);
+
   const stopMeeting = useCallback(() => {
     audioRef.current?.stop();
     audioRef.current = null;
@@ -146,5 +241,6 @@ export function useMeeting() {
     elapsed,
     startMeeting,
     stopMeeting,
+    sendText,
   };
 }

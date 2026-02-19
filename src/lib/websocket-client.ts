@@ -7,7 +7,7 @@ export interface LiveTranscript {
 }
 
 export interface ArtefactUpdate {
-  artefactType: "diagram" | "spec" | "stories";
+  artefactType: string;
   chunk?: string;
   content?: string;
   error?: string;
@@ -62,6 +62,12 @@ export class MeetingWebSocket {
   sendAudio(data: ArrayBuffer) {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(data);
+    }
+  }
+
+  sendText(text: string) {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: "text-input", data: text }));
     }
   }
 
