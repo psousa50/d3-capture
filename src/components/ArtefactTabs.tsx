@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { DiagramRenderer } from "./DiagramRenderer";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import { WireframeRenderer } from "./WireframeRenderer";
 import type { MeetingArtefacts } from "../lib/use-meeting";
 
 type TopTab = "diagrams" | "spec" | "stories";
@@ -139,7 +140,10 @@ function DiagramPanel({
         ))}
       </div>
       <div className="min-h-0 flex-1">
-        <DiagramRenderer content={active?.content ?? ""} />
+        {active?.renderer === "html"
+          ? <WireframeRenderer content={active.content} />
+          : <DiagramRenderer content={active?.content ?? ""} />
+        }
       </div>
     </div>
   );

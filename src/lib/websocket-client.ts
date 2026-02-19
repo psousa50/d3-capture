@@ -11,6 +11,7 @@ export interface ArtefactUpdate {
   chunk?: string;
   content?: string;
   error?: string;
+  renderer?: "mermaid" | "html";
 }
 
 export type ServerMessage =

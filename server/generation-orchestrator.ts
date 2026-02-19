@@ -1,5 +1,5 @@
 import { WebSocket } from "ws";
-import { Generator } from "../generators/types";
+import { Generator, DiagramPlan } from "../generators/types";
 import { planDiagrams, generateDiagram, getDiagramProvider } from "../generators/diagram";
 import { SpecGenerator } from "../generators/spec";
 import { StoryGenerator } from "../generators/stories";
@@ -131,18 +131,18 @@ export class GenerationOrchestrator {
   private async runSingleDiagram(
     provider: Parameters<typeof generateDiagram>[0],
     context: string,
-    entry: { type: Parameters<typeof generateDiagram>[2]; focus: string },
+    entry: DiagramPlan,
   ) {
     const artefactType = `diagram:${entry.type}`;
     let fullContent = "";
 
     this.send({
       type: "artefact-start",
-      data: { artefactType },
+      data: { artefactType, renderer: entry.renderer },
     });
 
     try {
-      for await (const chunk of generateDiagram(provider, context, entry.type, entry.focus)) {
+      for await (const chunk of generateDiagram(provider, context, entry)) {
         fullContent += chunk;
         this.send({
           type: "artefact-chunk",

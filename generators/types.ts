@@ -1,13 +1,9 @@
-export type DiagramSubType =
-  | "c4-system"
-  | "c4-container"
-  | "sequence"
-  | "erd"
-  | "flowchart";
+export type DiagramRenderer = "mermaid" | "html";
 
 export interface DiagramPlan {
-  type: DiagramSubType;
+  type: string;
   focus: string;
+  renderer: DiagramRenderer;
 }
 
 export interface Generator {

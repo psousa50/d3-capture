@@ -20,6 +20,7 @@ export interface ArtefactState {
 
 export interface DiagramState extends ArtefactState {
   label: string;
+  renderer: "mermaid" | "html";
 }
 
 export interface MeetingArtefacts {
@@ -29,16 +30,11 @@ export interface MeetingArtefacts {
   diagramsUpdating: boolean;
 }
 
-const DIAGRAM_LABELS: Record<string, string> = {
-  "c4-system": "C4 System Context",
-  "c4-container": "C4 Container",
-  sequence: "Sequence",
-  erd: "ERD",
-  flowchart: "Flowchart",
-};
-
 function diagramLabel(subType: string): string {
-  return DIAGRAM_LABELS[subType] ?? subType;
+  return subType
+    .split(/[-_\s]+/)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
 }
 
 const EMPTY_ARTEFACT: ArtefactState = { content: "", updating: false, pendingContent: "" };
@@ -89,10 +85,11 @@ export function useMeeting() {
             diagrams: {
               ...prev.diagrams,
               [subType]: {
-                content: "",
+                content: prev.diagrams[subType]?.content ?? "",
                 updating: true,
                 pendingContent: "",
                 label: diagramLabel(subType),
+                renderer: message.data.renderer ?? "mermaid",
               },
             },
           }));
