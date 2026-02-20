@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { MeetingSocket, type ArtefactUpdate, type MeetingSnapshot } from "./socket-client";
+import { MeetingSocket, type ArtefactUpdate, type MeetingSnapshot, type Participant } from "./socket-client";
 import { AudioCapture } from "./audio-capture";
 
 export type MeetingStatus = "idle" | "connecting" | "recording" | "error";
@@ -50,6 +50,7 @@ export function useMeeting() {
   });
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
+  const [participants, setParticipants] = useState<Participant[]>([]);
 
   const socketRef = useRef<MeetingSocket | null>(null);
   const audioRef = useRef<AudioCapture | null>(null);
@@ -211,6 +212,7 @@ export function useMeeting() {
       socket.onArtefactChunk(handleArtefactChunk);
       socket.onArtefactComplete(handleArtefactComplete);
       socket.onArtefactError(handleArtefactError);
+      socket.onPresence((data) => setParticipants(data.participants));
       socket.onError((msg) => setError(msg));
 
       const audio = new AudioCapture();
@@ -249,6 +251,7 @@ export function useMeeting() {
     status,
     transcript,
     artefacts,
+    participants,
     error,
     elapsed,
     startMeeting,

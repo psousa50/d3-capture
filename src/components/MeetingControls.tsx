@@ -15,14 +15,12 @@ export function MeetingControls({
   status,
   elapsed,
   error,
-  onStart,
   onStop,
   onSendText,
 }: {
   status: MeetingStatus;
   elapsed: number;
   error: string | null;
-  onStart: () => void | Promise<void>;
   onStop: () => void;
   onSendText: (text: string) => void;
 }) {
@@ -38,21 +36,8 @@ export function MeetingControls({
   return (
     <div className="flex items-center gap-4 border-t border-zinc-800 px-4 py-3">
       <div className="flex shrink-0 items-center gap-4">
-        {status === "idle" && (
-          <button
-            onClick={onStart}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500"
-          >
-            Start Meeting
-          </button>
-        )}
         {status === "connecting" && (
-          <button
-            disabled
-            className="rounded-lg bg-zinc-700 px-4 py-2 text-sm font-medium text-zinc-400"
-          >
-            Connecting...
-          </button>
+          <span className="text-sm text-zinc-400">Connecting...</span>
         )}
         {status === "recording" && (
           <>
@@ -67,14 +52,6 @@ export function MeetingControls({
               Recording {formatTime(elapsed)}
             </div>
           </>
-        )}
-        {status === "error" && (
-          <button
-            onClick={onStart}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500"
-          >
-            Retry
-          </button>
         )}
       </div>
 

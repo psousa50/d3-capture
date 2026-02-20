@@ -40,6 +40,7 @@ export class MeetingManager {
 
     active.handler.addParticipant(socket.id);
     this.sendSnapshot(socket, meetingId, projectId);
+    this.broadcastPresence(active);
 
     socket.on("audio-data", (data: ArrayBuffer) => {
       active.handler.handleAudio(socket.id, Buffer.from(data));
@@ -65,6 +66,7 @@ export class MeetingManager {
     }
 
     this.sendSnapshot(socket, meetingId, projectId);
+    if (active) this.broadcastPresence(active);
 
     console.log(`[meeting:${meetingId}] Viewer joined: ${socket.id}`);
   }
@@ -80,6 +82,7 @@ export class MeetingManager {
     if (role === "producer") {
       active.producers.delete(socket.id);
       active.handler.removeParticipant(socket.id);
+      this.broadcastPresence(active);
       console.log(`[meeting:${meetingId}] Producer left: ${socket.id} (${active.producers.size} remaining)`);
 
       if (active.producers.size === 0) {
@@ -90,6 +93,7 @@ export class MeetingManager {
       }
     } else {
       active.viewers.delete(socket.id);
+      this.broadcastPresence(active);
       console.log(`[meeting:${meetingId}] Viewer left: ${socket.id}`);
     }
   }
@@ -145,6 +149,14 @@ export class MeetingManager {
     active.handler.stop();
     endMeeting(meetingId);
     this.meetings.delete(meetingId);
+  }
+
+  private broadcastPresence(active: ActiveMeeting) {
+    const participants = [
+      ...Array.from(active.producers).map((id) => ({ id, role: "producer" as const })),
+      ...Array.from(active.viewers).map((id) => ({ id, role: "viewer" as const })),
+    ];
+    this.io.to(this.roomKey(active.meetingId)).emit("presence", { participants });
   }
 
   private roomKey(meetingId: string): string {

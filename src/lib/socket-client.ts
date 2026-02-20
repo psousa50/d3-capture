@@ -19,6 +19,15 @@ export interface MeetingSnapshot {
   artefacts: Record<string, string>;
 }
 
+export interface Participant {
+  id: string;
+  role: "producer" | "viewer";
+}
+
+export interface PresenceUpdate {
+  participants: Participant[];
+}
+
 type EventHandler<T> = (data: T) => void;
 
 export class MeetingSocket {
@@ -26,9 +35,14 @@ export class MeetingSocket {
 
   connect(meetingId: string, role: "producer" | "viewer" = "producer"): Promise<void> {
     return new Promise((resolve, reject) => {
+      const token = document.cookie
+        .split("; ")
+        .find((c) => c.startsWith("auth-token="))
+        ?.split("=")[1] ?? "";
+
       this.socket = io({
         query: { meetingId, role },
-        auth: { password: "" },
+        auth: { password: token },
         transports: ["websocket"],
         reconnection: true,
         reconnectionAttempts: 10,
@@ -68,6 +82,11 @@ export class MeetingSocket {
   onArtefactError(handler: EventHandler<ArtefactUpdate>) {
     this.socket?.on("artefact-error", handler);
     return () => { this.socket?.off("artefact-error", handler); };
+  }
+
+  onPresence(handler: EventHandler<PresenceUpdate>) {
+    this.socket?.on("presence", handler);
+    return () => { this.socket?.off("presence", handler); };
   }
 
   onError(handler: EventHandler<string>) {

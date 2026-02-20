@@ -1,98 +1,86 @@
 "use client";
 
-import { useState } from "react";
-import { useMeeting } from "../lib/use-meeting";
-import { TranscriptPanel } from "../components/TranscriptPanel";
-import { ArtefactTabs } from "../components/ArtefactTabs";
-import { MeetingControls } from "../components/MeetingControls";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 
-async function getOrCreateProject(): Promise<string> {
-  const res = await fetch("/api/projects");
-  const projects = await res.json();
-  if (projects.length > 0) return projects[0].id;
-
-  const createRes = await fetch("/api/projects", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: "Default Project" }),
-  });
-  const project = await createRes.json();
-  return project.id;
+interface Project {
+  id: string;
+  name: string;
+  created_at: number;
 }
 
-async function createMeetingForProject(projectId: string): Promise<string> {
-  const res = await fetch(`/api/projects/${projectId}/meetings`, {
-    method: "POST",
-  });
-  const meeting = await res.json();
-  return meeting.id;
-}
+export default function Dashboard() {
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
 
-export default function Home() {
-  const { status, transcript, artefacts, error, elapsed, startMeeting, stopMeeting, sendText } =
-    useMeeting();
-  const [starting, setStarting] = useState(false);
+  useEffect(() => {
+    fetch("/api/projects")
+      .then((r) => r.json())
+      .then(setProjects)
+      .finally(() => setLoading(false));
+  }, []);
 
-  const handleStart = async () => {
-    setStarting(true);
-    try {
-      const projectId = await getOrCreateProject();
-      const meetingId = await createMeetingForProject(projectId);
-      await startMeeting(meetingId);
-    } finally {
-      setStarting(false);
-    }
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = newName.trim();
+    if (!name) return;
+
+    setCreating(true);
+    const res = await fetch("/api/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    const project = await res.json();
+    setProjects((prev) => [project, ...prev]);
+    setNewName("");
+    setCreating(false);
   };
 
-  if (status === "idle") {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-8">
-        <div className="text-center">
-          <h1 className="text-4xl font-bold tracking-tight">Meeting Artefact Generator</h1>
-          <p className="mt-3 text-lg text-zinc-400">
-            Start a meeting to capture live transcription and generate diagrams, specs, and
-            stories.
-          </p>
-        </div>
-        <button
-          onClick={handleStart}
-          disabled={starting}
-          className="rounded-xl bg-blue-600 px-8 py-3 text-lg font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-50"
-        >
-          {starting ? "Starting..." : "Start Meeting"}
-        </button>
-        {error && <p className="text-sm text-red-400">{error}</p>}
-      </div>
-    );
-  }
-
   return (
-    <div className="flex h-screen flex-col">
-      <header className="flex items-center justify-between border-b border-zinc-800 px-4 py-2">
-        <h1 className="text-sm font-medium text-zinc-300">Meeting Artefact Generator</h1>
-        {status === "recording" && (
-          <div className="flex items-center gap-2 text-sm text-zinc-400">
-            <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-red-500" />
-            Recording
-          </div>
+    <div className="mx-auto max-w-3xl px-6 py-12">
+      <h1 className="text-3xl font-bold tracking-tight">Projects</h1>
+      <p className="mt-2 text-zinc-400">
+        Create a project to start capturing meetings and generating artefacts.
+      </p>
+
+      <form onSubmit={handleCreate} className="mt-8 flex gap-3">
+        <input
+          type="text"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          placeholder="New project name..."
+          className="flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm text-zinc-200 placeholder-zinc-500 focus:border-blue-500 focus:outline-none"
+        />
+        <button
+          type="submit"
+          disabled={creating || !newName.trim()}
+          className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-50"
+        >
+          {creating ? "Creating..." : "Create Project"}
+        </button>
+      </form>
+
+      <div className="mt-8 space-y-3">
+        {loading && <p className="text-sm text-zinc-500">Loading...</p>}
+        {!loading && projects.length === 0 && (
+          <p className="text-sm text-zinc-500">No projects yet. Create one to get started.</p>
         )}
-      </header>
-      <div className="flex flex-1 overflow-hidden">
-        <div className="w-1/3 border-r border-zinc-800">
-          <TranscriptPanel entries={transcript} />
-        </div>
-        <div className="flex-1">
-          <ArtefactTabs artefacts={artefacts} />
-        </div>
+        {projects.map((project) => (
+          <Link
+            key={project.id}
+            href={`/projects/${project.id}`}
+            className="block rounded-lg border border-zinc-800 p-4 transition-colors hover:border-zinc-600 hover:bg-zinc-900/50"
+          >
+            <h2 className="font-medium text-zinc-200">{project.name}</h2>
+            <p className="mt-1 text-xs text-zinc-500">
+              Created {new Date(project.created_at).toLocaleDateString()}
+            </p>
+          </Link>
+        ))}
       </div>
-      <MeetingControls
-        status={status}
-        elapsed={elapsed}
-        error={error}
-        onStart={handleStart}
-        onStop={stopMeeting}
-        onSendText={sendText}
-      />
     </div>
   );
 }
