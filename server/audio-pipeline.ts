@@ -20,7 +20,7 @@ export class AudioPipeline {
 
     this.accumulator = new TranscriptAccumulator(meetingId, (transcript) => {
       this.contextManager.addTranscript(transcript);
-      this.orchestrator.trigger();
+      this.orchestrator.trigger(transcript);
     });
   }
 
@@ -53,7 +53,7 @@ export class AudioPipeline {
     this.emit("live-transcript", { text, isFinal: true, speaker: null });
 
     this.contextManager.addTranscript(transcript);
-    this.orchestrator.trigger();
+    this.orchestrator.trigger(transcript);
   }
 
   stop() {

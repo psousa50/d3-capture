@@ -6,7 +6,12 @@ export interface DiagramPlan {
   renderer: DiagramRenderer;
 }
 
+export interface GenerateOptions {
+  context: string;
+  currentContent?: string;
+}
+
 export interface Generator {
   type: "spec" | "stories";
-  generate(context: string): AsyncIterable<string>;
+  generate(options: GenerateOptions): AsyncIterable<string>;
 }

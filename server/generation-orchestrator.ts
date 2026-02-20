@@ -4,8 +4,11 @@ import { planDiagrams, generateDiagram, getDiagramProvider } from "../generators
 import { SpecGenerator } from "../generators/spec";
 import { StoryGenerator } from "../generators/stories";
 import { ContextManager } from "./context-manager";
+import { triageArtefacts } from "./triage";
+import { AccumulatedTranscript } from "./transcript-accumulator";
 
 const GENERATION_TIMEOUT_MS = 60_000;
+const ARTEFACT_TYPES = ["spec", "stories", "diagram"];
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -15,43 +18,59 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 }
 
 export class GenerationOrchestrator {
-  private generators: Generator[];
+  private generators: Map<string, Generator> = new Map();
   private contextManager: ContextManager;
   private io: Server;
   private room: string;
   private generating = false;
-  private pendingTrigger = false;
+  private pendingTranscript: AccumulatedTranscript | null = null;
 
   constructor(io: Server, room: string, contextManager: ContextManager) {
     this.io = io;
     this.room = room;
     this.contextManager = contextManager;
-    this.generators = [new SpecGenerator(), new StoryGenerator()];
+
+    const spec = new SpecGenerator();
+    const stories = new StoryGenerator();
+    this.generators.set(spec.type, spec);
+    this.generators.set(stories.type, stories);
   }
 
-  async trigger() {
+  async trigger(transcript: AccumulatedTranscript) {
     if (this.generating) {
-      this.pendingTrigger = true;
+      this.pendingTranscript = transcript;
       return;
     }
     this.generating = true;
-    this.pendingTrigger = false;
+    this.pendingTranscript = null;
 
     try {
-      console.log("[orchestrator] Generation started");
-      const tasks = [
-        ...this.generators.map((g) =>
-          withTimeout(this.runGenerator(g), GENERATION_TIMEOUT_MS, g.type)
-        ),
-        withTimeout(this.runDiagramGeneration(), GENERATION_TIMEOUT_MS, "diagrams"),
-      ];
+      const affected = await triageArtefacts(transcript.fullText, ARTEFACT_TYPES);
+      console.log("[orchestrator] Triage result:", affected.length === 0 ? "nothing to update" : affected.join(", "));
+
+      if (affected.length === 0) return;
+
+      const tasks: Promise<void>[] = [];
+
+      for (const type of affected) {
+        if (type === "diagram") {
+          tasks.push(withTimeout(this.runDiagramGeneration(), GENERATION_TIMEOUT_MS, "diagrams"));
+        } else {
+          const generator = this.generators.get(type);
+          if (generator) {
+            tasks.push(withTimeout(this.runGenerator(generator), GENERATION_TIMEOUT_MS, type));
+          }
+        }
+      }
+
       await Promise.allSettled(tasks);
       console.log("[orchestrator] Generation complete");
     } finally {
       this.generating = false;
-      if (this.pendingTrigger) {
-        this.pendingTrigger = false;
-        this.trigger();
+      if (this.pendingTranscript) {
+        const pending = this.pendingTranscript;
+        this.pendingTranscript = null;
+        this.trigger(pending);
       }
     }
   }
@@ -60,12 +79,13 @@ export class GenerationOrchestrator {
     const context = this.contextManager.buildPromptContext(generator.type);
     if (!context.trim()) return;
 
+    const currentContent = this.contextManager.getArtefactStates()[generator.type];
     let fullContent = "";
 
     this.emit("artefact-start", { artefactType: generator.type });
 
     try {
-      for await (const chunk of generator.generate(context)) {
+      for await (const chunk of generator.generate({ context, currentContent })) {
         fullContent += chunk;
         this.emit("artefact-chunk", { artefactType: generator.type, chunk });
       }
@@ -96,13 +116,17 @@ export class GenerationOrchestrator {
       const plan = await planDiagrams(provider, context);
       console.log("[diagram] Plan:", plan.map((p) => p.type).join(", "));
 
-      const tasks = plan.map((entry) =>
-        withTimeout(
-          this.runSingleDiagram(provider, context, entry),
+      const artefactStates = this.contextManager.getArtefactStates();
+
+      const tasks = plan.map((entry) => {
+        const diagramKey = `diagram:${entry.type}`;
+        const currentContent = artefactStates[diagramKey];
+        return withTimeout(
+          this.runSingleDiagram(provider, context, entry, currentContent),
           GENERATION_TIMEOUT_MS,
-          `diagram:${entry.type}`,
-        )
-      );
+          diagramKey,
+        );
+      });
       await Promise.allSettled(tasks);
 
       this.emit("artefact-complete", { artefactType: "diagram" });
@@ -119,6 +143,7 @@ export class GenerationOrchestrator {
     provider: Parameters<typeof generateDiagram>[0],
     context: string,
     entry: DiagramPlan,
+    currentContent?: string,
   ) {
     const artefactType = `diagram:${entry.type}`;
     let fullContent = "";
@@ -126,7 +151,7 @@ export class GenerationOrchestrator {
     this.emit("artefact-start", { artefactType, renderer: entry.renderer });
 
     try {
-      for await (const chunk of generateDiagram(provider, context, entry)) {
+      for await (const chunk of generateDiagram(provider, context, entry, currentContent)) {
         fullContent += chunk;
         this.emit("artefact-chunk", { artefactType, chunk });
       }

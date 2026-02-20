@@ -4,7 +4,7 @@ import { OpenAIProvider } from "./openai";
 import { OpenAICompatibleProvider } from "./openai-compatible";
 
 type ProviderName = "anthropic" | "openai" | "groq";
-type GeneratorName = "diagram" | "spec" | "stories";
+type GeneratorName = "diagram" | "spec" | "stories" | "triage";
 
 interface LLMConfig {
   defaultProvider: ProviderName;

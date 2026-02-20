@@ -16,26 +16,51 @@ export interface AccumulatedTranscript {
 
 type TranscriptCallback = (transcript: AccumulatedTranscript) => void;
 
-const EMIT_INTERVAL_MS = 30_000;
+const SILENCE_THRESHOLD_MS = 4_000;
+const MIN_INTERVAL_MS = 15_000;
 
 export class TranscriptAccumulator {
   private chunks: TranscriptChunk[] = [];
-  private intervalId: ReturnType<typeof setInterval> | null = null;
   private onEmit: TranscriptCallback;
   private startTime: number = Date.now();
   private meetingId: string;
+  private silenceTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastEmitTime: number = Date.now();
 
   constructor(meetingId: string, onEmit: TranscriptCallback) {
     this.meetingId = meetingId;
     this.onEmit = onEmit;
-    this.intervalId = setInterval(() => this.emit(), EMIT_INTERVAL_MS);
   }
 
   add(chunk: TranscriptChunk) {
-    if (chunk.isFinal) {
-      this.chunks.push(chunk);
-      insertChunk(this.meetingId, chunk.text, chunk.speaker ?? null, chunk.timestamp);
+    if (!chunk.isFinal) return;
+
+    this.chunks.push(chunk);
+    insertChunk(this.meetingId, chunk.text, chunk.speaker ?? null, chunk.timestamp);
+    this.resetSilenceTimer();
+  }
+
+  private resetSilenceTimer() {
+    if (this.silenceTimer) {
+      clearTimeout(this.silenceTimer);
     }
+
+    this.silenceTimer = setTimeout(() => {
+      this.silenceTimer = null;
+      this.tryEmit();
+    }, SILENCE_THRESHOLD_MS);
+  }
+
+  private tryEmit() {
+    if (this.chunks.length === 0) return;
+
+    const timeSinceLastEmit = Date.now() - this.lastEmitTime;
+    if (timeSinceLastEmit < MIN_INTERVAL_MS) {
+      setTimeout(() => this.tryEmit(), MIN_INTERVAL_MS - timeSinceLastEmit);
+      return;
+    }
+
+    this.emit();
   }
 
   private emit() {
@@ -49,6 +74,7 @@ export class TranscriptAccumulator {
     };
 
     this.onEmit(transcript);
+    this.lastEmitTime = Date.now();
     this.startTime = Date.now();
     this.chunks = [];
   }
@@ -69,9 +95,9 @@ export class TranscriptAccumulator {
   }
 
   stop() {
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
+    if (this.silenceTimer) {
+      clearTimeout(this.silenceTimer);
+      this.silenceTimer = null;
     }
   }
 }

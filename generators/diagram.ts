@@ -1,4 +1,4 @@
-import { DiagramPlan, DiagramRenderer } from "./types";
+import { DiagramPlan } from "./types";
 import { getProviderForGenerator } from "../server/llm/config";
 import { LLMProvider } from "../server/llm/types";
 
@@ -13,7 +13,7 @@ For each diagram, specify the renderer:
 Respond with ONLY a JSON array, no markdown, no explanation:
 [{"type": "sequence diagram", "focus": "brief description of what to show", "renderer": "mermaid"}, ...]`;
 
-const MERMAID_PROMPT = `Generate a Mermaid diagram based on the meeting conversation.
+const MERMAID_CREATE_PROMPT = `Generate a Mermaid diagram based on the meeting conversation.
 
 Rules:
 - Output ONLY valid Mermaid syntax — no code fences, no markdown, no explanation
@@ -29,7 +29,16 @@ Common Mermaid syntax patterns:
   stateDiagram-v2 for state machines
   classDiagram for class diagrams`;
 
-const HTML_PROMPT = `Generate a UI wireframe as self-contained HTML and CSS. This is a lo-fi wireframe mockup, not a production UI.
+const MERMAID_UPDATE_PROMPT = `Update an existing Mermaid diagram based on new meeting conversation. You will receive the current diagram and new discussion.
+
+Rules:
+- Output ONLY valid Mermaid syntax — no code fences, no markdown, no explanation
+- Preserve the existing structure where it is still accurate
+- Only add, modify, or remove elements directly affected by the new conversation
+- Keep diagrams readable — no more than 15-20 nodes
+- Use clear, concise labels`;
+
+const HTML_CREATE_PROMPT = `Generate a UI wireframe as self-contained HTML and CSS. This is a lo-fi wireframe mockup, not a production UI.
 
 Rules:
 - Output a COMPLETE HTML document with embedded CSS in a <style> tag
@@ -38,6 +47,15 @@ Rules:
 - Include realistic placeholder content (not lorem ipsum)
 - Show the layout, navigation, forms, buttons, and key UI elements discussed
 - Keep it simple and readable — this is a wireframe, not a polished design
+- Output ONLY the HTML — no code fences, no markdown, no explanation`;
+
+const HTML_UPDATE_PROMPT = `Update an existing UI wireframe based on new meeting conversation. You will receive the current HTML wireframe and new discussion.
+
+Rules:
+- Output a COMPLETE HTML document with embedded CSS in a <style> tag
+- Preserve the existing layout and elements where they are still accurate
+- Only modify, add, or remove elements directly affected by the new conversation
+- Use system fonts only — no external resources, no JavaScript
 - Output ONLY the HTML — no code fences, no markdown, no explanation`;
 
 export async function planDiagrams(
@@ -65,7 +83,7 @@ export async function planDiagrams(
         (entry.renderer === "mermaid" || entry.renderer === "html")
       )
       .slice(0, 4);
-  } catch (err) {
+  } catch {
     console.error("[diagram] Failed to parse plan, falling back:", json);
     return [{ type: "flowchart", focus: "general system overview", renderer: "mermaid" }];
   }
@@ -75,9 +93,20 @@ export async function* generateDiagram(
   provider: LLMProvider,
   context: string,
   plan: DiagramPlan,
+  currentContent?: string,
 ): AsyncIterable<string> {
-  const systemPrompt = plan.renderer === "html" ? HTML_PROMPT : MERMAID_PROMPT;
-  const userPrompt = `${context}\n\nDiagram type: ${plan.type}\nFocus: ${plan.focus}`;
+  const isUpdate = !!currentContent;
+
+  let systemPrompt: string;
+  if (plan.renderer === "html") {
+    systemPrompt = isUpdate ? HTML_UPDATE_PROMPT : HTML_CREATE_PROMPT;
+  } else {
+    systemPrompt = isUpdate ? MERMAID_UPDATE_PROMPT : MERMAID_CREATE_PROMPT;
+  }
+
+  const userPrompt = isUpdate
+    ? `## Current diagram\n${currentContent}\n\n## New conversation\n${context}\n\nDiagram type: ${plan.type}\nFocus: ${plan.focus}`
+    : `${context}\n\nDiagram type: ${plan.type}\nFocus: ${plan.focus}`;
 
   yield* provider.stream({
     system: systemPrompt,
