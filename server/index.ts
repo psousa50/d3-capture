@@ -2,14 +2,15 @@ import "dotenv/config";
 import { createServer } from "http";
 import next from "next";
 import { parse } from "url";
-import { WebSocketServer, WebSocket } from "ws";
-import { AudioPipeline } from "./audio-pipeline";
-import { createProject, listProjects } from "./db/repositories/projects";
-import { createMeeting, endMeeting } from "./db/repositories/meetings";
+import { Server } from "socket.io";
+import { MeetingManager } from "./meeting-manager";
+import { getMeeting } from "./db/repositories/meetings";
+import { getProject } from "./db/repositories/projects";
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = "localhost";
 const port = parseInt(process.env.PORT || "3000", 10);
+const authSecret = process.env.AUTH_SECRET;
 
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
@@ -20,38 +21,55 @@ app.prepare().then(() => {
     handle(req, res, parsedUrl);
   });
 
-  const wss = new WebSocketServer({ noServer: true });
-
-  server.on("upgrade", (request, socket, head) => {
-    const { pathname } = parse(request.url!);
-
-    if (pathname === "/ws/audio") {
-      wss.handleUpgrade(request, socket, head, (ws) => {
-        wss.emit("connection", ws, request);
-      });
-    }
+  const io = new Server(server, {
+    maxHttpBufferSize: 1e6,
   });
 
-  wss.on("connection", (ws: WebSocket) => {
-    console.log("[ws] Client connected");
+  if (authSecret) {
+    io.use((socket, next) => {
+      const password = socket.handshake.auth?.password;
+      if (password !== authSecret) {
+        return next(new Error("Authentication failed"));
+      }
+      next();
+    });
+  }
 
-    let projects = listProjects();
-    let project = projects[0];
-    if (!project) {
-      project = createProject("Default Project");
-      console.log(`[ws] Created default project: ${project.id}`);
+  const meetingManager = new MeetingManager(io);
+
+  io.on("connection", (socket) => {
+    const { meetingId, role } = socket.handshake.query as Record<string, string>;
+
+    if (!meetingId) {
+      socket.emit("error", "Missing meetingId");
+      socket.disconnect();
+      return;
     }
 
-    const meeting = createMeeting(project.id);
-    console.log(`[ws] Started meeting: ${meeting.id} (project: ${project.id})`);
+    const meeting = getMeeting(meetingId);
+    if (!meeting) {
+      socket.emit("error", "Meeting not found");
+      socket.disconnect();
+      return;
+    }
 
-    const pipeline = new AudioPipeline(ws, project.id, meeting.id);
-    pipeline.start();
+    const project = getProject(meeting.project_id);
+    if (!project) {
+      socket.emit("error", "Project not found");
+      socket.disconnect();
+      return;
+    }
 
-    ws.on("close", () => {
-      console.log(`[ws] Client disconnected, ending meeting: ${meeting.id}`);
-      pipeline.stop();
-      endMeeting(meeting.id);
+    console.log(`[io] ${role || "producer"} connected: ${socket.id} → meeting ${meetingId}`);
+
+    if (role === "viewer") {
+      meetingManager.joinAsViewer(socket, project.id, meetingId);
+    } else {
+      meetingManager.joinAsProducer(socket, project.id, meetingId);
+    }
+
+    socket.on("disconnect", () => {
+      meetingManager.handleDisconnect(socket);
     });
   });
 

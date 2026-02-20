@@ -22,7 +22,7 @@ export function MeetingControls({
   status: MeetingStatus;
   elapsed: number;
   error: string | null;
-  onStart: () => void;
+  onStart: () => void | Promise<void>;
   onStop: () => void;
   onSendText: (text: string) => void;
 }) {

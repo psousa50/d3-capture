@@ -1,13 +1,48 @@
 "use client";
 
+import { useState } from "react";
 import { useMeeting } from "../lib/use-meeting";
 import { TranscriptPanel } from "../components/TranscriptPanel";
 import { ArtefactTabs } from "../components/ArtefactTabs";
 import { MeetingControls } from "../components/MeetingControls";
 
+async function getOrCreateProject(): Promise<string> {
+  const res = await fetch("/api/projects");
+  const projects = await res.json();
+  if (projects.length > 0) return projects[0].id;
+
+  const createRes = await fetch("/api/projects", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "Default Project" }),
+  });
+  const project = await createRes.json();
+  return project.id;
+}
+
+async function createMeetingForProject(projectId: string): Promise<string> {
+  const res = await fetch(`/api/projects/${projectId}/meetings`, {
+    method: "POST",
+  });
+  const meeting = await res.json();
+  return meeting.id;
+}
+
 export default function Home() {
   const { status, transcript, artefacts, error, elapsed, startMeeting, stopMeeting, sendText } =
     useMeeting();
+  const [starting, setStarting] = useState(false);
+
+  const handleStart = async () => {
+    setStarting(true);
+    try {
+      const projectId = await getOrCreateProject();
+      const meetingId = await createMeetingForProject(projectId);
+      await startMeeting(meetingId);
+    } finally {
+      setStarting(false);
+    }
+  };
 
   if (status === "idle") {
     return (
@@ -20,10 +55,11 @@ export default function Home() {
           </p>
         </div>
         <button
-          onClick={startMeeting}
-          className="rounded-xl bg-blue-600 px-8 py-3 text-lg font-medium text-white transition-colors hover:bg-blue-500"
+          onClick={handleStart}
+          disabled={starting}
+          className="rounded-xl bg-blue-600 px-8 py-3 text-lg font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-50"
         >
-          Start Meeting
+          {starting ? "Starting..." : "Start Meeting"}
         </button>
         {error && <p className="text-sm text-red-400">{error}</p>}
       </div>
@@ -53,7 +89,7 @@ export default function Home() {
         status={status}
         elapsed={elapsed}
         error={error}
-        onStart={startMeeting}
+        onStart={handleStart}
         onStop={stopMeeting}
         onSendText={sendText}
       />

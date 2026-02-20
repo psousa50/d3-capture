@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 
 interface TranscriptEntry {
   text: string;
-  speaker?: number;
+  speaker?: string | number | null;
   isFinal: boolean;
 }
 
@@ -16,6 +16,17 @@ const SPEAKER_COLOURS = [
   "text-rose-400",
   "text-cyan-400",
 ];
+
+function speakerColour(speaker: string | number): string {
+  const index = typeof speaker === "number"
+    ? speaker
+    : Array.from(speaker).reduce((acc, c) => acc + c.charCodeAt(0), 0);
+  return SPEAKER_COLOURS[index % SPEAKER_COLOURS.length];
+}
+
+function speakerLabel(speaker: string | number): string {
+  return typeof speaker === "number" ? `Speaker ${speaker + 1}` : speaker;
+}
 
 export function TranscriptPanel({ entries }: { entries: TranscriptEntry[] }) {
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -38,11 +49,9 @@ export function TranscriptPanel({ entries }: { entries: TranscriptEntry[] }) {
             key={i}
             className={`text-sm ${entry.isFinal ? "text-zinc-200" : "text-zinc-500"}`}
           >
-            {entry.speaker !== undefined && (
-              <span
-                className={`font-medium ${SPEAKER_COLOURS[entry.speaker % SPEAKER_COLOURS.length]}`}
-              >
-                Speaker {entry.speaker + 1}:{" "}
+            {entry.speaker != null && (
+              <span className={`font-medium ${speakerColour(entry.speaker)}`}>
+                {speakerLabel(entry.speaker)}:{" "}
               </span>
             )}
             {entry.text}

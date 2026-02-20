@@ -1,4 +1,4 @@
-import { WebSocket } from "ws";
+import type { Server } from "socket.io";
 import { Generator, DiagramPlan } from "../generators/types";
 import { planDiagrams, generateDiagram, getDiagramProvider } from "../generators/diagram";
 import { SpecGenerator } from "../generators/spec";
@@ -17,12 +17,14 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 export class GenerationOrchestrator {
   private generators: Generator[];
   private contextManager: ContextManager;
-  private ws: WebSocket;
+  private io: Server;
+  private room: string;
   private generating = false;
   private pendingTrigger = false;
 
-  constructor(ws: WebSocket, contextManager: ContextManager) {
-    this.ws = ws;
+  constructor(io: Server, room: string, contextManager: ContextManager) {
+    this.io = io;
+    this.room = room;
     this.contextManager = contextManager;
     this.generators = [new SpecGenerator(), new StoryGenerator()];
   }
@@ -60,34 +62,25 @@ export class GenerationOrchestrator {
 
     let fullContent = "";
 
-    this.send({
-      type: "artefact-start",
-      data: { artefactType: generator.type },
-    });
+    this.emit("artefact-start", { artefactType: generator.type });
 
     try {
       for await (const chunk of generator.generate(context)) {
         fullContent += chunk;
-        this.send({
-          type: "artefact-chunk",
-          data: { artefactType: generator.type, chunk },
-        });
+        this.emit("artefact-chunk", { artefactType: generator.type, chunk });
       }
 
       this.contextManager.updateArtefact(generator.type, fullContent);
 
-      this.send({
-        type: "artefact-complete",
-        data: { artefactType: generator.type, content: fullContent },
+      this.emit("artefact-complete", {
+        artefactType: generator.type,
+        content: fullContent,
       });
     } catch (err) {
       console.error(`[generator:${generator.type}] Error:`, err);
-      this.send({
-        type: "artefact-error",
-        data: {
-          artefactType: generator.type,
-          error: "Generation failed",
-        },
+      this.emit("artefact-error", {
+        artefactType: generator.type,
+        error: "Generation failed",
       });
     }
   }
@@ -96,10 +89,7 @@ export class GenerationOrchestrator {
     const context = this.contextManager.buildPromptContext("diagram");
     if (!context.trim()) return;
 
-    this.send({
-      type: "artefact-start",
-      data: { artefactType: "diagram" },
-    });
+    this.emit("artefact-start", { artefactType: "diagram" });
 
     try {
       const provider = getDiagramProvider();
@@ -115,15 +105,12 @@ export class GenerationOrchestrator {
       );
       await Promise.allSettled(tasks);
 
-      this.send({
-        type: "artefact-complete",
-        data: { artefactType: "diagram" },
-      });
+      this.emit("artefact-complete", { artefactType: "diagram" });
     } catch (err) {
       console.error("[generator:diagram] Error:", err);
-      this.send({
-        type: "artefact-error",
-        data: { artefactType: "diagram", error: "Diagram generation failed" },
+      this.emit("artefact-error", {
+        artefactType: "diagram",
+        error: "Diagram generation failed",
       });
     }
   }
@@ -136,38 +123,27 @@ export class GenerationOrchestrator {
     const artefactType = `diagram:${entry.type}`;
     let fullContent = "";
 
-    this.send({
-      type: "artefact-start",
-      data: { artefactType, renderer: entry.renderer },
-    });
+    this.emit("artefact-start", { artefactType, renderer: entry.renderer });
 
     try {
       for await (const chunk of generateDiagram(provider, context, entry)) {
         fullContent += chunk;
-        this.send({
-          type: "artefact-chunk",
-          data: { artefactType, chunk },
-        });
+        this.emit("artefact-chunk", { artefactType, chunk });
       }
 
       this.contextManager.updateArtefact(artefactType, fullContent);
 
-      this.send({
-        type: "artefact-complete",
-        data: { artefactType, content: fullContent },
-      });
+      this.emit("artefact-complete", { artefactType, content: fullContent });
     } catch (err) {
       console.error(`[generator:${artefactType}] Error:`, err);
-      this.send({
-        type: "artefact-error",
-        data: { artefactType, error: "Generation failed" },
+      this.emit("artefact-error", {
+        artefactType,
+        error: "Generation failed",
       });
     }
   }
 
-  private send(message: Record<string, unknown>) {
-    if (this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(message));
-    }
+  private emit(event: string, data: Record<string, unknown>) {
+    this.io.to(this.room).emit(event, data);
   }
 }
