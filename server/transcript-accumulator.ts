@@ -26,10 +26,20 @@ export class TranscriptAccumulator {
   private meetingId: string;
   private silenceTimer: ReturnType<typeof setTimeout> | null = null;
   private lastEmitTime: number = Date.now();
+  private lastChunkTime = new Map<string, number>();
 
   constructor(meetingId: string, onEmit: TranscriptCallback) {
     this.meetingId = meetingId;
     this.onEmit = onEmit;
+  }
+
+  addParticipant(socketId: string) {
+    this.lastChunkTime.set(socketId, Date.now());
+  }
+
+  removeParticipant(socketId: string) {
+    this.lastChunkTime.delete(socketId);
+    this.checkAllSilent();
   }
 
   add(chunk: TranscriptChunk) {
@@ -37,6 +47,11 @@ export class TranscriptAccumulator {
 
     this.chunks.push(chunk);
     insertChunk(this.meetingId, chunk.text, chunk.speaker ?? null, chunk.timestamp);
+
+    if (chunk.speaker) {
+      this.lastChunkTime.set(chunk.speaker, Date.now());
+    }
+
     this.resetSilenceTimer();
   }
 
@@ -47,8 +62,21 @@ export class TranscriptAccumulator {
 
     this.silenceTimer = setTimeout(() => {
       this.silenceTimer = null;
-      this.tryEmit();
+      this.checkAllSilent();
     }, SILENCE_THRESHOLD_MS);
+  }
+
+  private checkAllSilent() {
+    if (this.chunks.length === 0) return;
+
+    const now = Date.now();
+    const allSilent = Array.from(this.lastChunkTime.values()).every(
+      (t) => now - t >= SILENCE_THRESHOLD_MS
+    );
+
+    if (allSilent || this.lastChunkTime.size === 0) {
+      this.tryEmit();
+    }
   }
 
   private tryEmit() {

@@ -1,5 +1,5 @@
 import type { Server, Socket } from "socket.io";
-import { AudioPipeline } from "./audio-pipeline";
+import { AudioHandler } from "./audio-handler";
 import { getMeeting, endMeeting } from "./db/repositories/meetings";
 import { getChunks } from "./db/repositories/transcripts";
 import { getArtefacts } from "./db/repositories/artefacts";
@@ -9,7 +9,7 @@ const DISCONNECT_GRACE_MS = 30_000;
 interface ActiveMeeting {
   projectId: string;
   meetingId: string;
-  pipeline: AudioPipeline;
+  handler: AudioHandler;
   producers: Set<string>;
   viewers: Set<string>;
   disconnectTimer: ReturnType<typeof setTimeout> | null;
@@ -38,17 +38,18 @@ export class MeetingManager {
     socket.data.meetingId = meetingId;
     socket.data.role = "producer";
 
+    active.handler.addParticipant(socket.id);
     this.sendSnapshot(socket, meetingId, projectId);
 
     socket.on("audio-data", (data: ArrayBuffer) => {
-      active.pipeline.handleAudio(socket.id, Buffer.from(data));
+      active.handler.handleAudio(socket.id, Buffer.from(data));
     });
 
     socket.on("text-input", (text: string) => {
-      active.pipeline.handleTextInput(text);
+      active.handler.handleTextInput(text);
     });
 
-    console.log(`[meeting:${meetingId}] Producer joined: ${socket.id}`);
+    console.log(`[meeting:${meetingId}] Producer joined: ${socket.id} (${active.producers.size} total)`);
   }
 
   joinAsViewer(socket: Socket, projectId: string, meetingId: string) {
@@ -78,6 +79,7 @@ export class MeetingManager {
 
     if (role === "producer") {
       active.producers.delete(socket.id);
+      active.handler.removeParticipant(socket.id);
       console.log(`[meeting:${meetingId}] Producer left: ${socket.id} (${active.producers.size} remaining)`);
 
       if (active.producers.size === 0) {
@@ -101,13 +103,13 @@ export class MeetingManager {
     if (existing) return existing;
 
     const room = this.roomKey(meetingId);
-    const pipeline = new AudioPipeline(this.io, room, projectId, meetingId);
-    pipeline.start();
+    const handler = new AudioHandler(this.io, room, projectId, meetingId);
+    handler.start();
 
     const active: ActiveMeeting = {
       projectId,
       meetingId,
-      pipeline,
+      handler,
       producers: new Set(),
       viewers: new Set(),
       disconnectTimer: null,
@@ -140,7 +142,7 @@ export class MeetingManager {
     if (!active) return;
 
     console.log(`[meeting:${meetingId}] Shutting down`);
-    active.pipeline.stop();
+    active.handler.stop();
     endMeeting(meetingId);
     this.meetings.delete(meetingId);
   }

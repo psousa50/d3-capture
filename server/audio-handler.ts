@@ -4,13 +4,19 @@ import { TranscriptAccumulator } from "./transcript-accumulator";
 import { ContextManager } from "./context-manager";
 import { GenerationOrchestrator } from "./generation-orchestrator";
 
-export class AudioPipeline {
+interface ParticipantStream {
+  socketId: string;
+  deepgramWs: WebSocket;
+}
+
+export class AudioHandler {
   private io: Server;
   private room: string;
   private accumulator: TranscriptAccumulator;
   private contextManager: ContextManager;
   private orchestrator: GenerationOrchestrator;
-  private deepgramWs: WebSocket | null = null;
+  private participants = new Map<string, ParticipantStream>();
+  private deepgramKey: string | null = null;
 
   constructor(io: Server, room: string, projectId: string, meetingId: string) {
     this.io = io;
@@ -25,19 +31,42 @@ export class AudioPipeline {
   }
 
   start() {
-    const deepgramKey = process.env.DEEPGRAM_API_KEY;
-    if (!deepgramKey) {
+    this.deepgramKey = process.env.DEEPGRAM_API_KEY ?? null;
+    if (!this.deepgramKey) {
       console.error("[audio] DEEPGRAM_API_KEY not set");
       this.emit("error", "Transcription service not configured");
-      return;
+    }
+  }
+
+  addParticipant(socketId: string) {
+    if (this.participants.has(socketId)) return;
+    if (!this.deepgramKey) return;
+
+    const deepgramWs = this.connectDeepgram(this.deepgramKey, socketId);
+    this.participants.set(socketId, { socketId, deepgramWs });
+    this.accumulator.addParticipant(socketId);
+
+    console.log(`[audio] Participant ${socketId} added (${this.participants.size} total)`);
+  }
+
+  removeParticipant(socketId: string) {
+    const participant = this.participants.get(socketId);
+    if (!participant) return;
+
+    if (participant.deepgramWs.readyState === WebSocket.OPEN) {
+      participant.deepgramWs.close();
     }
 
-    this.connectDeepgram(deepgramKey);
+    this.participants.delete(socketId);
+    this.accumulator.removeParticipant(socketId);
+
+    console.log(`[audio] Participant ${socketId} removed (${this.participants.size} total)`);
   }
 
   handleAudio(socketId: string, data: Buffer) {
-    if (this.deepgramWs?.readyState === WebSocket.OPEN) {
-      this.deepgramWs.send(data);
+    const participant = this.participants.get(socketId);
+    if (participant?.deepgramWs.readyState === WebSocket.OPEN) {
+      participant.deepgramWs.send(data);
     }
   }
 
@@ -58,64 +87,66 @@ export class AudioPipeline {
 
   stop() {
     this.accumulator.stop();
-    if (this.deepgramWs?.readyState === WebSocket.OPEN) {
-      this.deepgramWs.close();
+    for (const participant of this.participants.values()) {
+      if (participant.deepgramWs.readyState === WebSocket.OPEN) {
+        participant.deepgramWs.close();
+      }
     }
+    this.participants.clear();
   }
 
-  private connectDeepgram(apiKey: string) {
+  private connectDeepgram(apiKey: string, socketId: string): WebSocket {
     const deepgramUrl =
       "wss://api.deepgram.com/v1/listen?" +
       new URLSearchParams({
         model: "nova-2",
         language: "en",
         smart_format: "true",
-        diarize: "true",
         punctuate: "true",
         encoding: "linear16",
         sample_rate: "16000",
         channels: "1",
       }).toString();
 
-    this.deepgramWs = new WebSocket(deepgramUrl, {
+    const ws = new WebSocket(deepgramUrl, {
       headers: { Authorization: `Token ${apiKey}` },
     });
 
-    this.deepgramWs.on("open", () => {
-      console.log("[audio] Deepgram connection established");
+    ws.on("open", () => {
+      console.log(`[audio] Deepgram stream open for ${socketId}`);
     });
 
-    this.deepgramWs.on("message", (data: unknown) => {
+    ws.on("message", (data: unknown) => {
       const response = JSON.parse(String(data));
       const transcript = response.channel?.alternatives?.[0]?.transcript;
 
       if (transcript) {
         const isFinal = response.is_final;
-        const speaker = response.channel?.alternatives?.[0]?.words?.[0]?.speaker;
 
         this.accumulator.add({
           text: transcript,
           isFinal,
-          speaker: speaker !== undefined ? String(speaker) : undefined,
+          speaker: socketId,
           timestamp: Date.now(),
         });
 
         this.emit("live-transcript", {
           text: transcript,
           isFinal,
-          speaker: speaker ?? null,
+          speaker: socketId,
         });
       }
     });
 
-    this.deepgramWs.on("error", (err) => {
-      console.error("[audio] Deepgram error:", err);
-      this.emit("error", "Transcription connection error");
+    ws.on("error", (err) => {
+      console.error(`[audio] Deepgram error for ${socketId}:`, err);
     });
 
-    this.deepgramWs.on("close", () => {
-      console.log("[audio] Deepgram connection closed");
+    ws.on("close", () => {
+      console.log(`[audio] Deepgram stream closed for ${socketId}`);
     });
+
+    return ws;
   }
 
   private emit(event: string, data: unknown) {
