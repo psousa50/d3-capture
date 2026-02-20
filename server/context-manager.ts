@@ -1,5 +1,6 @@
 import { AccumulatedTranscript } from "./transcript-accumulator";
 import { getProviderForGenerator } from "./llm/config";
+import { getArtefacts, upsertArtefact } from "./db/repositories/artefacts";
 
 const VERBATIM_WINDOW_MS = 5 * 60 * 1000;
 const SUMMARISE_INTERVAL_MS = 5 * 60 * 1000;
@@ -11,11 +12,24 @@ interface ContextWindow {
 }
 
 export class ContextManager {
+  private projectId: string;
   private transcripts: AccumulatedTranscript[] = [];
   private summary = "";
   private artefactStates: Record<string, string> = {};
   private lastSummarisedAt: number = Date.now();
   private summarising = false;
+
+  constructor(projectId: string) {
+    this.projectId = projectId;
+    this.hydrateArtefacts();
+  }
+
+  private hydrateArtefacts() {
+    const rows = getArtefacts(this.projectId);
+    for (const row of rows) {
+      this.artefactStates[row.type] = row.content;
+    }
+  }
 
   addTranscript(transcript: AccumulatedTranscript) {
     this.transcripts.push(transcript);
@@ -24,6 +38,7 @@ export class ContextManager {
 
   updateArtefact(type: string, content: string) {
     this.artefactStates[type] = content;
+    upsertArtefact(this.projectId, type, content);
   }
 
   getContext(): ContextWindow {
@@ -77,6 +92,10 @@ export class ContextManager {
 
   getFullTranscript(): string {
     return this.transcripts.map((t) => t.fullText).join("\n\n");
+  }
+
+  getArtefactStates(): Record<string, string> {
+    return { ...this.artefactStates };
   }
 
   private async maybeSummarise() {

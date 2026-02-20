@@ -1,7 +1,9 @@
+import { insertChunk } from "./db/repositories/transcripts";
+
 export interface TranscriptChunk {
   text: string;
   isFinal: boolean;
-  speaker?: number;
+  speaker?: string;
   timestamp: number;
 }
 
@@ -21,8 +23,10 @@ export class TranscriptAccumulator {
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private onEmit: TranscriptCallback;
   private startTime: number = Date.now();
+  private meetingId: string;
 
-  constructor(onEmit: TranscriptCallback) {
+  constructor(meetingId: string, onEmit: TranscriptCallback) {
+    this.meetingId = meetingId;
     this.onEmit = onEmit;
     this.intervalId = setInterval(() => this.emit(), EMIT_INTERVAL_MS);
   }
@@ -30,6 +34,7 @@ export class TranscriptAccumulator {
   add(chunk: TranscriptChunk) {
     if (chunk.isFinal) {
       this.chunks.push(chunk);
+      insertChunk(this.meetingId, chunk.text, chunk.speaker ?? null, chunk.timestamp);
     }
   }
 

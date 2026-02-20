@@ -4,6 +4,8 @@ import next from "next";
 import { parse } from "url";
 import { WebSocketServer, WebSocket } from "ws";
 import { AudioPipeline } from "./audio-pipeline";
+import { createProject, listProjects } from "./db/repositories/projects";
+import { createMeeting, endMeeting } from "./db/repositories/meetings";
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = "localhost";
@@ -32,12 +34,24 @@ app.prepare().then(() => {
 
   wss.on("connection", (ws: WebSocket) => {
     console.log("[ws] Client connected");
-    const pipeline = new AudioPipeline(ws);
+
+    let projects = listProjects();
+    let project = projects[0];
+    if (!project) {
+      project = createProject("Default Project");
+      console.log(`[ws] Created default project: ${project.id}`);
+    }
+
+    const meeting = createMeeting(project.id);
+    console.log(`[ws] Started meeting: ${meeting.id} (project: ${project.id})`);
+
+    const pipeline = new AudioPipeline(ws, project.id, meeting.id);
     pipeline.start();
 
     ws.on("close", () => {
-      console.log("[ws] Client disconnected");
+      console.log(`[ws] Client disconnected, ending meeting: ${meeting.id}`);
       pipeline.stop();
+      endMeeting(meeting.id);
     });
   });
 

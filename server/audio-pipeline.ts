@@ -10,12 +10,12 @@ export class AudioPipeline {
   private orchestrator: GenerationOrchestrator;
   private deepgramWs: WebSocket | null = null;
 
-  constructor(ws: WebSocket) {
+  constructor(ws: WebSocket, projectId: string, meetingId: string) {
     this.ws = ws;
-    this.contextManager = new ContextManager();
+    this.contextManager = new ContextManager(projectId);
     this.orchestrator = new GenerationOrchestrator(ws, this.contextManager);
 
-    this.accumulator = new TranscriptAccumulator((transcript) => {
+    this.accumulator = new TranscriptAccumulator(meetingId, (transcript) => {
       this.contextManager.addTranscript(transcript);
       this.orchestrator.trigger();
     });
@@ -63,7 +63,7 @@ export class AudioPipeline {
         this.accumulator.add({
           text: transcript,
           isFinal,
-          speaker: speaker ?? undefined,
+          speaker: speaker !== undefined ? String(speaker) : undefined,
           timestamp: Date.now(),
         });
 
@@ -109,7 +109,7 @@ export class AudioPipeline {
   private handleTextInput(text: string) {
     const now = Date.now();
     const transcript = {
-      chunks: [{ text, isFinal: true, timestamp: now }],
+      chunks: [{ text, isFinal: true as const, timestamp: now }],
       fullText: text,
       startTime: now,
       endTime: now,
