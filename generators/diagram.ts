@@ -20,6 +20,7 @@ Rules:
 - Choose the correct Mermaid diagram syntax for the requested type
 - Keep diagrams readable — no more than 15-20 nodes
 - Use clear, concise labels
+- Do NOT add style, classDef, or any custom styling — the renderer handles theming
 
 Common Mermaid syntax patterns:
   graph TD / graph LR for flowcharts: A[Node] -->|label| B[Node]
@@ -39,7 +40,8 @@ Rules:
 - Preserve the existing structure where it is still accurate
 - Only add, modify, or remove elements directly affected by the new conversation
 - Keep diagrams readable — no more than 15-20 nodes
-- Use clear, concise labels`;
+- Use clear, concise labels
+- Do NOT add style, classDef, or any custom styling — the renderer handles theming`;
 
 const HTML_CREATE_PROMPT = `Generate a UI wireframe as self-contained HTML and CSS. This is a lo-fi wireframe mockup, not a production UI.
 

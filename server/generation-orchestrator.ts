@@ -25,6 +25,20 @@ function isValidMermaid(text: string): boolean {
   return MERMAID_KEYWORDS.test(text.trim());
 }
 
+function stripMermaidStyles(content: string): string {
+  return content
+    .split("\n")
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("style ")) return false;
+      if (trimmed.startsWith("classDef ")) return false;
+      if (trimmed.startsWith("class ") && !trimmed.startsWith("classDiagram")) return false;
+      return true;
+    })
+    .map((line) => line.replace(/:::\w+/g, ""))
+    .join("\n");
+}
+
 function fixErDiagramAttributes(content: string): string {
   if (!content.trim().startsWith("erDiagram")) return content;
 
@@ -308,6 +322,7 @@ export class GenerationOrchestrator {
 
       if (entry.renderer === "mermaid") {
         fullContent = stripCodeFences(fullContent);
+        fullContent = stripMermaidStyles(fullContent);
         fullContent = fixErDiagramAttributes(fullContent);
         if (!isValidMermaid(fullContent)) {
           console.error(`[generator:${artefactType}] Invalid Mermaid syntax, discarding`);
