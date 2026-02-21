@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "tsx server/index.ts",
+    "dev": "tsx watch --clear-screen=false --exclude '.next/**' --exclude 'node_modules/**' --exclude '*.db' server/index.ts",
     "build": "next build",
     "start": "NODE_ENV=production tsx server/index.ts",
     "lint": "eslint"
