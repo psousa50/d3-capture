@@ -13,5 +13,6 @@ export async function POST(_request: Request, { params }: { params: Promise<{ pr
   if (!project) {
     return NextResponse.json({ error: "Project not found" }, { status: 404 });
   }
+
   return NextResponse.json(createMeeting(projectId));
 }

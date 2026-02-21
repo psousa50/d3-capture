@@ -5,11 +5,11 @@ import { useEffect, useRef, useState } from "react";
 export function DiagramRenderer({ content }: { content: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
-  const lastContentRef = useRef<string>("");
 
   useEffect(() => {
-    if (!content || !containerRef.current || content === lastContentRef.current) return;
+    if (!content || !containerRef.current) return;
 
+    setError(null);
     let cancelled = false;
 
     async function render() {
@@ -31,19 +31,20 @@ export function DiagramRenderer({ content }: { content: string }) {
       const { svg } = await mermaid.render(id, cleaned);
       if (!cancelled && containerRef.current) {
         containerRef.current.innerHTML = svg;
-        lastContentRef.current = content;
-        setError(null);
       }
     }
 
     render().catch((err) => {
       console.error("[mermaid]", err);
-      if (!cancelled) setError("Invalid diagram syntax");
+      if (!cancelled) {
+        if (containerRef.current) containerRef.current.innerHTML = "";
+        setError("Invalid diagram syntax");
+      }
     });
     return () => { cancelled = true; };
   }, [content]);
 
-  if (!content && !lastContentRef.current) {
+  if (!content) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-zinc-600">
         No diagram generated yet
@@ -51,21 +52,17 @@ export function DiagramRenderer({ content }: { content: string }) {
     );
   }
 
-  if (error) {
-    return (
-      <div className="h-full overflow-y-auto p-4">
-        <p className="mb-2 text-sm text-amber-400">{error}</p>
-        <pre className="rounded bg-zinc-900 p-3 text-xs text-zinc-400 overflow-auto">
-          {content}
-        </pre>
-      </div>
-    );
-  }
-
   return (
-    <div
-      ref={containerRef}
-      className="h-full overflow-auto p-4"
-    />
+    <div className="h-full overflow-y-auto p-4">
+      <div ref={containerRef} className={error ? "hidden" : ""} />
+      {error && (
+        <>
+          <p className="mb-2 text-sm text-amber-400">{error}</p>
+          <pre className="rounded bg-zinc-900 p-3 text-xs text-zinc-400 overflow-auto">
+            {content}
+          </pre>
+        </>
+      )}
+    </div>
   );
 }

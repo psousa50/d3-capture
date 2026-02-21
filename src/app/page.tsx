@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { ConfirmModal } from "../components/ConfirmModal";
 
 interface Project {
   id: string;
@@ -14,6 +15,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/projects")
@@ -21,6 +23,13 @@ export default function Dashboard() {
       .then(setProjects)
       .finally(() => setLoading(false));
   }, []);
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    await fetch(`/api/projects/${deleteTarget}`, { method: "DELETE" });
+    setProjects((prev) => prev.filter((p) => p.id !== deleteTarget));
+    setDeleteTarget(null);
+  };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,18 +78,39 @@ export default function Dashboard() {
           <p className="text-sm text-zinc-500">No projects yet. Create one to get started.</p>
         )}
         {projects.map((project) => (
-          <Link
+          <div
             key={project.id}
-            href={`/projects/${project.id}`}
-            className="block rounded-lg border border-zinc-800 p-4 transition-colors hover:border-zinc-600 hover:bg-zinc-900/50"
+            className="flex items-center justify-between rounded-lg border border-zinc-800 p-4 transition-colors hover:border-zinc-600 hover:bg-zinc-900/50"
           >
-            <h2 className="font-medium text-zinc-200">{project.name}</h2>
-            <p className="mt-1 text-xs text-zinc-500">
-              Created {new Date(project.created_at).toLocaleDateString()}
-            </p>
-          </Link>
+            <Link
+              href={`/projects/${project.id}`}
+              className="flex-1"
+            >
+              <h2 className="font-medium text-zinc-200">{project.name}</h2>
+              <p className="mt-1 text-xs text-zinc-500">
+                Created {new Date(project.created_at).toLocaleDateString()}
+              </p>
+            </Link>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setDeleteTarget(project.id);
+              }}
+              className="ml-3 text-xs text-zinc-600 transition-colors hover:text-red-400"
+            >
+              Delete
+            </button>
+          </div>
         ))}
       </div>
+
+      <ConfirmModal
+        open={deleteTarget !== null}
+        title="Delete project"
+        message="This will permanently delete the project, all its meetings, and generated artefacts."
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

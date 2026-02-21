@@ -5,16 +5,27 @@ import { DiagramRenderer } from "./DiagramRenderer";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { WireframeRenderer } from "./WireframeRenderer";
 import type { MeetingArtefacts } from "../lib/use-meeting";
+import { ConfirmModal } from "./ConfirmModal";
+import type { DocumentEntry } from "../lib/socket-client";
 
-type TopTab = "diagrams" | "spec" | "stories";
+type TopTab = "diagrams" | "spec" | "stories" | "transcripts";
 
 const TABS: { key: TopTab; label: string }[] = [
   { key: "diagrams", label: "Diagrams" },
   { key: "spec", label: "Spec" },
   { key: "stories", label: "Stories" },
+  { key: "transcripts", label: "Transcripts" },
 ];
 
-export function ArtefactTabs({ artefacts }: { artefacts: MeetingArtefacts }) {
+interface ArtefactTabsProps {
+  artefacts: MeetingArtefacts;
+  documents?: DocumentEntry[];
+  onDeleteDocument?: (id: string) => void;
+  onRegenerateDiagrams?: () => void;
+  onRegenerateDiagram?: (type: string, renderer: "mermaid" | "html") => void;
+}
+
+export function ArtefactTabs({ artefacts, documents, onDeleteDocument, onRegenerateDiagrams, onRegenerateDiagram }: ArtefactTabsProps) {
   const [activeTab, setActiveTab] = useState<TopTab>("diagrams");
   const [activeDiagram, setActiveDiagram] = useState<string | null>(null);
 
@@ -36,6 +47,8 @@ export function ArtefactTabs({ artefacts }: { artefacts: MeetingArtefacts }) {
           const isUpdating =
             tab.key === "diagrams"
               ? diagramsHaveActivity
+              : tab.key === "transcripts"
+              ? false
               : artefacts[tab.key].updating;
 
           return (
@@ -69,6 +82,8 @@ export function ArtefactTabs({ artefacts }: { artefacts: MeetingArtefacts }) {
             onSelectDiagram={setActiveDiagram}
             planning={artefacts.diagramsUpdating && diagramKeys.length === 0}
             error={artefacts.diagramsError}
+            onRegenerate={onRegenerateDiagrams}
+            onRegenerateSingle={onRegenerateDiagram}
           />
         )}
         {activeTab === "spec" && (
@@ -83,7 +98,85 @@ export function ArtefactTabs({ artefacts }: { artefacts: MeetingArtefacts }) {
             placeholder="No stories generated yet"
           />
         )}
+        {activeTab === "transcripts" && (
+          <DocumentsPanel
+            documents={documents ?? []}
+            onDelete={onDeleteDocument}
+          />
+        )}
       </div>
+    </div>
+  );
+}
+
+function DocumentsPanel({
+  documents,
+  onDelete,
+}: {
+  documents: DocumentEntry[];
+  onDelete?: (id: string) => void;
+}) {
+  const [activeDoc, setActiveDoc] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  useEffect(() => {
+    if (documents.length > 0 && (!activeDoc || !documents.find((d) => d.id === activeDoc))) {
+      setActiveDoc(documents[0].id);
+    }
+  }, [documents, activeDoc]);
+
+  if (documents.length === 0) {
+    return (
+      <div className="flex h-full items-center justify-center text-sm text-zinc-600">
+        No documents imported yet
+      </div>
+    );
+  }
+
+  const active = documents.find((d) => d.id === activeDoc);
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex items-center gap-1 border-b border-zinc-800/50 bg-zinc-900/50 px-2 pt-1">
+        {documents.map((doc, i) => (
+          <button
+            key={doc.id}
+            onClick={() => setActiveDoc(doc.id)}
+            className={`relative rounded-t px-3 py-1.5 text-xs font-medium transition-colors ${
+              activeDoc === doc.id
+                ? "bg-zinc-800 text-zinc-200"
+                : "text-zinc-500 hover:text-zinc-300"
+            }`}
+          >
+            Document {i + 1}
+          </button>
+        ))}
+      </div>
+      {active && (
+        <div className="min-h-0 flex-1 overflow-auto">
+          {onDelete && (
+            <div className="flex justify-end border-b border-zinc-800/50 px-3 py-1.5">
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="text-xs text-zinc-500 transition-colors hover:text-red-400"
+              >
+                Delete
+              </button>
+            </div>
+          )}
+          <pre className="whitespace-pre-wrap p-4 text-sm text-zinc-300">{active.content}</pre>
+        </div>
+      )}
+      <ConfirmModal
+        open={confirmDelete}
+        title="Delete document"
+        message="This will permanently delete this imported document."
+        onConfirm={() => {
+          if (active && onDelete) onDelete(active.id);
+          setConfirmDelete(false);
+        }}
+        onCancel={() => setConfirmDelete(false)}
+      />
     </div>
   );
 }
@@ -95,6 +188,8 @@ function DiagramPanel({
   onSelectDiagram,
   planning,
   error,
+  onRegenerate,
+  onRegenerateSingle,
 }: {
   diagrams: MeetingArtefacts["diagrams"];
   diagramKeys: string[];
@@ -102,6 +197,8 @@ function DiagramPanel({
   onSelectDiagram: (key: string) => void;
   planning: boolean;
   error: string | null;
+  onRegenerate?: () => void;
+  onRegenerateSingle?: (type: string, renderer: "mermaid" | "html") => void;
 }) {
   if (planning) {
     return (
@@ -132,29 +229,47 @@ function DiagramPanel({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex gap-1 border-b border-zinc-800/50 bg-zinc-900/50 px-2 pt-1">
-        {diagramKeys.map((key) => (
+      <div className="flex items-center border-b border-zinc-800/50 bg-zinc-900/50 px-2 pt-1">
+        <div className="flex flex-1 gap-1">
+          {diagramKeys.map((key) => (
+            <button
+              key={key}
+              onClick={() => onSelectDiagram(key)}
+              className={`relative rounded-t px-3 py-1.5 text-xs font-medium transition-colors ${
+                activeDiagram === key
+                  ? "bg-zinc-800 text-zinc-200"
+                  : "text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              {diagrams[key].label}
+              {diagrams[key].updating && (
+                <span className="ml-1.5 inline-block h-1 w-1 animate-pulse rounded-full bg-blue-400" />
+              )}
+            </button>
+          ))}
+        </div>
+        {onRegenerate && (
           <button
-            key={key}
-            onClick={() => onSelectDiagram(key)}
-            className={`relative rounded-t px-3 py-1.5 text-xs font-medium transition-colors ${
-              activeDiagram === key
-                ? "bg-zinc-800 text-zinc-200"
-                : "text-zinc-500 hover:text-zinc-300"
-            }`}
+            onClick={onRegenerate}
+            className="px-3 py-1.5 text-xs text-zinc-500 transition-colors hover:text-zinc-200"
           >
-            {diagrams[key].label}
-            {diagrams[key].updating && (
-              <span className="ml-1.5 inline-block h-1 w-1 animate-pulse rounded-full bg-blue-400" />
-            )}
+            Regenerate All
           </button>
-        ))}
+        )}
       </div>
-      <div className="min-h-0 flex-1">
+      <div className="relative min-h-0 flex-1">
         {active?.renderer === "html"
           ? <WireframeRenderer content={active.content} />
           : <DiagramRenderer content={active?.content ?? ""} />
         }
+        {activeDiagram && active && onRegenerateSingle && !active.updating && (
+          <button
+            onClick={() => onRegenerateSingle(activeDiagram, active.renderer)}
+            className="absolute right-3 top-3 rounded border border-zinc-700 bg-zinc-900/80 px-3 py-1 text-xs text-zinc-400 transition-colors hover:border-zinc-500 hover:text-zinc-200"
+          >
+            Regenerate
+          </button>
+        )}
       </div>
     </div>
   );

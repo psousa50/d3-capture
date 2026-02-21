@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArtefactTabs } from "../../../components/ArtefactTabs";
+import { ConfirmModal } from "../../../components/ConfirmModal";
 import type { MeetingArtefacts, ArtefactState, DiagramState } from "../../../lib/use-meeting";
 
 interface Meeting {
@@ -41,6 +42,7 @@ function toReadOnlyArtefacts(raw: Record<string, string>): MeetingArtefacts {
     stories: raw.stories ? { content: raw.stories, updating: false, pendingContent: "" } : { ...empty },
     diagrams,
     diagramsUpdating: false,
+    diagramsError: null,
   };
 }
 
@@ -60,6 +62,7 @@ export default function ProjectPage() {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -78,6 +81,13 @@ export default function ProjectPage() {
     const res = await fetch(`/api/projects/${projectId}/meetings`, { method: "POST" });
     const meeting = await res.json();
     router.push(`/projects/${projectId}/meetings/${meeting.id}`);
+  };
+
+  const handleDeleteMeeting = async () => {
+    if (!deleteTarget) return;
+    await fetch(`/api/projects/${projectId}/meetings/${deleteTarget}`, { method: "DELETE" });
+    setMeetings((prev) => prev.filter((m) => m.id !== deleteTarget));
+    setDeleteTarget(null);
   };
 
   if (loading) {
@@ -109,7 +119,7 @@ export default function ProjectPage() {
         <h1 className="text-2xl font-bold tracking-tight">{project.name}</h1>
       </div>
 
-      <div className="mt-6 flex gap-3">
+      <div className="mt-6">
         <button
           onClick={handleStartMeeting}
           disabled={starting}
@@ -132,26 +142,47 @@ export default function ProjectPage() {
             <p className="text-sm text-zinc-500">No meetings yet.</p>
           )}
           {meetings.map((meeting) => (
-            <Link
+            <div
               key={meeting.id}
-              href={`/projects/${projectId}/meetings/${meeting.id}`}
               className="flex items-center justify-between rounded-lg border border-zinc-800 px-4 py-3 transition-colors hover:border-zinc-600 hover:bg-zinc-900/50"
             >
-              <div>
-                <p className="text-sm text-zinc-200">
-                  {new Date(meeting.started_at).toLocaleString()}
-                </p>
-                <p className="text-xs text-zinc-500">
-                  {formatDuration(meeting.started_at, meeting.ended_at)}
-                </p>
-              </div>
-              <span className={`text-xs font-medium ${meeting.status === "active" ? "text-green-400" : "text-zinc-500"}`}>
-                {meeting.status === "active" ? "Active" : "Completed"}
-              </span>
-            </Link>
+              <Link
+                href={`/projects/${projectId}/meetings/${meeting.id}`}
+                className="flex flex-1 items-center justify-between"
+              >
+                <div>
+                  <p className="text-sm text-zinc-200">
+                    {new Date(meeting.started_at).toLocaleString()}
+                  </p>
+                  <p className="text-xs text-zinc-500">
+                    {formatDuration(meeting.started_at, meeting.ended_at)}
+                  </p>
+                </div>
+                <span className={`text-xs font-medium ${meeting.status === "active" ? "text-green-400" : "text-zinc-500"}`}>
+                  {meeting.status === "active" ? "Active" : "Completed"}
+                </span>
+              </Link>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDeleteTarget(meeting.id);
+                }}
+                className="ml-3 text-xs text-zinc-600 transition-colors hover:text-red-400"
+              >
+                Delete
+              </button>
+            </div>
           ))}
         </div>
       </div>
+
+      <ConfirmModal
+        open={deleteTarget !== null}
+        title="Delete meeting"
+        message="This will permanently delete the meeting and its transcripts."
+        onConfirm={handleDeleteMeeting}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

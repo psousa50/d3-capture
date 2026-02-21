@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getProject } from "../../../../../server/db/repositories/projects";
+import { getProject, deleteProject } from "../../../../../server/db/repositories/projects";
 import { getArtefacts } from "../../../../../server/db/repositories/artefacts";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ projectId: string }> }) {
@@ -16,4 +16,15 @@ export async function GET(_request: Request, { params }: { params: Promise<{ pro
   }
 
   return NextResponse.json({ ...project, artefacts: artefactMap });
+}
+
+export async function DELETE(_request: Request, { params }: { params: Promise<{ projectId: string }> }) {
+  const { projectId } = await params;
+  const project = getProject(projectId);
+  if (!project) {
+    return NextResponse.json({ error: "Project not found" }, { status: 404 });
+  }
+
+  deleteProject(projectId);
+  return new NextResponse(null, { status: 204 });
 }

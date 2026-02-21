@@ -15,12 +15,16 @@ export function MeetingControls({
   status,
   elapsed,
   error,
+  onStartRecording,
+  onStopRecording,
   onStop,
   onSendText,
 }: {
   status: MeetingStatus;
   elapsed: number;
   error: string | null;
+  onStartRecording: () => void;
+  onStopRecording: () => void;
   onStop: () => void;
   onSendText: (text: string) => void;
 }) {
@@ -33,29 +37,47 @@ export function MeetingControls({
     setTextInput("");
   };
 
+  const isActive = status === "connected" || status === "recording";
+
   return (
     <div className="flex items-center gap-4 border-t border-zinc-800 px-4 py-3">
-      <div className="flex shrink-0 items-center gap-4">
+      <div className="flex shrink-0 items-center gap-3">
         {status === "connecting" && (
           <span className="text-sm text-zinc-400">Connecting...</span>
+        )}
+        {isActive && (
+          <button
+            onClick={onStop}
+            className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
+          >
+            End Meeting
+          </button>
+        )}
+        {status === "connected" && (
+          <button
+            onClick={onStartRecording}
+            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-500"
+          >
+            Start Recording
+          </button>
         )}
         {status === "recording" && (
           <>
             <button
-              onClick={onStop}
-              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-500"
+              onClick={onStopRecording}
+              className="rounded-lg bg-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-600"
             >
-              End Meeting
+              Stop Recording
             </button>
             <div className="flex items-center gap-2 text-sm text-zinc-400">
               <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-red-500" />
-              Recording {formatTime(elapsed)}
+              {formatTime(elapsed)}
             </div>
           </>
         )}
       </div>
 
-      {status === "recording" && (
+      {isActive && (
         <form
           className="flex flex-1 gap-2"
           onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}
