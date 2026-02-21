@@ -14,9 +14,16 @@ export interface ArtefactUpdate {
   renderer?: "mermaid" | "html";
 }
 
+export interface DocumentEntry {
+  id: string;
+  content: string;
+  createdAt: number;
+}
+
 export interface MeetingSnapshot {
-  transcript: { text: string; speaker: string | null; isFinal: boolean }[];
+  transcript: { id?: number; text: string; speaker: string | null; isFinal: boolean }[];
   artefacts: Record<string, string>;
+  documents: DocumentEntry[];
 }
 
 export interface Participant {
@@ -100,6 +107,58 @@ export class MeetingSocket {
 
   sendText(text: string) {
     this.socket?.emit("text-input", text);
+  }
+
+  importTranscript(text: string) {
+    this.socket?.emit("import-transcript", text);
+  }
+
+  regenerateDiagrams() {
+    this.socket?.emit("regenerate-diagrams");
+  }
+
+  regenerateDiagram(type: string, renderer: "mermaid" | "html") {
+    this.socket?.emit("regenerate-diagram", { type, renderer });
+  }
+
+  startRecording() {
+    this.socket?.emit("start-recording");
+  }
+
+  stopRecording() {
+    this.socket?.emit("stop-recording");
+  }
+
+  editTranscript(id: number, text: string) {
+    this.socket?.emit("edit-transcript", { id, text });
+  }
+
+  deleteTranscript(id: number) {
+    this.socket?.emit("delete-transcript", { id });
+  }
+
+  onTranscriptEdited(handler: EventHandler<{ id: number; text: string }>) {
+    this.socket?.on("transcript-edited", handler);
+    return () => { this.socket?.off("transcript-edited", handler); };
+  }
+
+  onTranscriptDeleted(handler: EventHandler<{ id: number }>) {
+    this.socket?.on("transcript-deleted", handler);
+    return () => { this.socket?.off("transcript-deleted", handler); };
+  }
+
+  deleteDocument(id: string) {
+    this.socket?.emit("delete-document", { id });
+  }
+
+  onDocumentAdded(handler: EventHandler<DocumentEntry>) {
+    this.socket?.on("document-added", handler);
+    return () => { this.socket?.off("document-added", handler); };
+  }
+
+  onDocumentDeleted(handler: EventHandler<{ id: string }>) {
+    this.socket?.on("document-deleted", handler);
+    return () => { this.socket?.off("document-deleted", handler); };
   }
 
   disconnect() {

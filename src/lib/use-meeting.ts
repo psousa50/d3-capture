@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { MeetingSocket, type ArtefactUpdate, type MeetingSnapshot, type Participant } from "./socket-client";
+import { MeetingSocket, type ArtefactUpdate, type DocumentEntry, type MeetingSnapshot, type Participant } from "./socket-client";
 import { AudioCapture } from "./audio-capture";
 
-export type MeetingStatus = "idle" | "connecting" | "recording" | "error";
+export type MeetingStatus = "idle" | "connecting" | "connected" | "recording" | "error";
 
-interface TranscriptEntry {
+export interface TranscriptEntry {
+  id?: number;
   text: string;
   speaker?: string | number | null;
   isFinal: boolean;
@@ -50,6 +51,7 @@ export function useMeeting() {
     diagramsUpdating: false,
     diagramsError: null,
   });
+  const [documents, setDocuments] = useState<DocumentEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [participants, setParticipants] = useState<Participant[]>([]);
@@ -163,10 +165,13 @@ export function useMeeting() {
 
   const handleMeetingState = useCallback((snapshot: MeetingSnapshot) => {
     setTranscript(snapshot.transcript.map((t) => ({
+      id: t.id,
       text: t.text,
       speaker: t.speaker,
       isFinal: t.isFinal,
     })));
+
+    setDocuments(snapshot.documents ?? []);
 
     setArtefacts((prev) => {
       const next = { ...prev };
@@ -223,6 +228,37 @@ export function useMeeting() {
       socket.onPresence((data) => setParticipants(data.participants));
       socket.onError((msg) => setError(msg));
 
+      socket.onTranscriptEdited(({ id, text }) => {
+        setTranscript((prev) => prev.map((e) => (e.id === id ? { ...e, text } : e)));
+      });
+
+      socket.onTranscriptDeleted(({ id }) => {
+        setTranscript((prev) => prev.filter((e) => e.id !== id));
+      });
+
+      socket.onDocumentAdded((doc) => {
+        setDocuments((prev) => [...prev, doc]);
+      });
+
+      socket.onDocumentDeleted(({ id }) => {
+        setDocuments((prev) => prev.filter((d) => d.id !== id));
+      });
+
+      setStatus("connected");
+    } catch (err) {
+      setStatus("error");
+      setError(err instanceof Error ? err.message : "Failed to connect");
+    }
+  }, [handleMeetingState, handleArtefactStart, handleArtefactChunk, handleArtefactComplete, handleArtefactError]);
+
+  const startRecording = useCallback(async () => {
+    const socket = socketRef.current;
+    if (!socket) return;
+
+    try {
+      setError(null);
+      socket.startRecording();
+
       const audio = new AudioCapture();
       audioRef.current = audio;
       await audio.start((data) => socket.sendAudio(data));
@@ -234,13 +270,48 @@ export function useMeeting() {
         setElapsed(Math.floor((Date.now() - startTime) / 1000));
       }, 1000);
     } catch (err) {
-      setStatus("error");
-      setError(err instanceof Error ? err.message : "Failed to start meeting");
+      setError(err instanceof Error ? err.message : "Failed to start recording");
     }
-  }, [handleMeetingState, handleArtefactStart, handleArtefactChunk, handleArtefactComplete, handleArtefactError]);
+  }, []);
+
+  const stopRecording = useCallback(() => {
+    audioRef.current?.stop();
+    audioRef.current = null;
+    socketRef.current?.stopRecording();
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    setElapsed(0);
+    setStatus("connected");
+  }, []);
 
   const sendText = useCallback((text: string) => {
     socketRef.current?.sendText(text);
+  }, []);
+
+  const importTranscript = useCallback((text: string) => {
+    socketRef.current?.importTranscript(text);
+  }, []);
+
+  const regenerateDiagrams = useCallback(() => {
+    socketRef.current?.regenerateDiagrams();
+  }, []);
+
+  const regenerateDiagram = useCallback((type: string, renderer: "mermaid" | "html") => {
+    socketRef.current?.regenerateDiagram(type, renderer);
+  }, []);
+
+  const editTranscript = useCallback((id: number, text: string) => {
+    socketRef.current?.editTranscript(id, text);
+  }, []);
+
+  const deleteTranscript = useCallback((id: number) => {
+    socketRef.current?.deleteTranscript(id);
+  }, []);
+
+  const deleteDocument = useCallback((id: string) => {
+    socketRef.current?.deleteDocument(id);
   }, []);
 
   const stopMeeting = useCallback(() => {
@@ -259,11 +330,20 @@ export function useMeeting() {
     status,
     transcript,
     artefacts,
+    documents,
     participants,
     error,
     elapsed,
     startMeeting,
+    startRecording,
+    stopRecording,
     stopMeeting,
     sendText,
+    importTranscript,
+    regenerateDiagrams,
+    regenerateDiagram,
+    editTranscript,
+    deleteTranscript,
+    deleteDocument,
   };
 }
