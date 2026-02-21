@@ -187,7 +187,7 @@ export function useMeeting() {
               updating: false,
               pendingContent: "",
               label: diagramLabel(subType),
-              renderer: "mermaid",
+              renderer: content.trimStart().startsWith("<") || content.includes("<!DOCTYPE") || content.trimStart().startsWith("```html") ? "html" : "mermaid",
             },
           };
         }

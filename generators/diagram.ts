@@ -116,7 +116,7 @@ export async function* generateDiagram(
   yield* provider.stream({
     system: systemPrompt,
     messages: [{ role: "user", content: userPrompt }],
-    maxTokens: plan.renderer === "html" ? 4096 : 2048,
+    maxTokens: plan.renderer === "html" ? 8192 : 2048,
   });
 }
 

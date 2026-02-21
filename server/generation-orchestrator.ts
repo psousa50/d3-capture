@@ -169,19 +169,18 @@ export class GenerationOrchestrator {
       const diagramKey = `diagram:${diagramType}`;
       console.log(`[orchestrator] Regenerating ${diagramKey} (manual)`);
 
+      const currentContent = this.contextManager.getArtefactStates()[diagramKey];
       const context = this.contextManager.buildPromptContext("diagram");
       if (!context.trim()) {
         console.warn("[diagram] Empty context, skipping");
         return;
       }
 
-      this.contextManager.clearSingleDiagram(diagramType);
-
       const provider = getDiagramProvider();
-      const plan: DiagramPlan = { type: diagramType, focus: `regenerate ${diagramType}`, renderer };
+      const plan: DiagramPlan = { type: diagramType, focus: `update ${diagramType}`, renderer };
 
       await withTimeout(
-        this.runSingleDiagram(provider, context, plan),
+        this.runSingleDiagram(provider, context, plan, currentContent),
         GENERATION_TIMEOUT_MS,
         diagramKey,
       );
@@ -270,11 +269,29 @@ export class GenerationOrchestrator {
 
     try {
       const provider = getDiagramProvider();
-      console.log("[diagram] Planning diagrams...");
-      const plan = await planDiagrams(provider, context);
-      console.log("[diagram] Plan:", plan.map((p) => `${p.type} (${p.renderer})`).join(", "));
-
       const artefactStates = this.contextManager.getArtefactStates();
+
+      const existingDiagrams = Object.entries(artefactStates)
+        .filter(([key]) => key.startsWith("diagram:"))
+        .map(([key, content]) => ({
+          type: key.slice("diagram:".length),
+          content,
+        }));
+
+      let plan: DiagramPlan[];
+
+      if (existingDiagrams.length > 0) {
+        console.log("[diagram] Updating existing diagrams:", existingDiagrams.map((d) => d.type).join(", "));
+        plan = existingDiagrams.map((d) => ({
+          type: d.type,
+          focus: `update ${d.type}`,
+          renderer: (d.content.trimStart().startsWith("<") || d.content.includes("<!DOCTYPE") || d.content.trimStart().startsWith("```html")) ? "html" as const : "mermaid" as const,
+        }));
+      } else {
+        console.log("[diagram] Planning diagrams...");
+        plan = await planDiagrams(provider, context);
+        console.log("[diagram] Plan:", plan.map((p) => `${p.type} (${p.renderer})`).join(", "));
+      }
 
       for (const entry of plan) {
         const diagramKey = `diagram:${entry.type}`;
@@ -320,8 +337,9 @@ export class GenerationOrchestrator {
         this.emit("artefact-chunk", { artefactType, chunk });
       }
 
+      fullContent = stripCodeFences(fullContent);
+
       if (entry.renderer === "mermaid") {
-        fullContent = stripCodeFences(fullContent);
         fullContent = stripMermaidStyles(fullContent);
         fullContent = fixErDiagramAttributes(fullContent);
         if (!isValidMermaid(fullContent)) {

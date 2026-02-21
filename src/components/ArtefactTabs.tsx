@@ -32,10 +32,12 @@ export function ArtefactTabs({ artefacts, documents, onDeleteDocument, onRegener
   const diagramKeys = Object.keys(artefacts.diagrams);
 
   useEffect(() => {
-    if (diagramKeys.length > 0 && (!activeDiagram || !artefacts.diagrams[activeDiagram])) {
+    if (activeDiagram && artefacts.diagrams[activeDiagram]) return;
+    if (diagramKeys.length > 0) {
       setActiveDiagram(diagramKeys[0]);
     }
-  }, [diagramKeys, activeDiagram, artefacts.diagrams]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [diagramKeys.join(",")]);
 
   const diagramsHaveActivity =
     artefacts.diagramsUpdating || diagramKeys.some((k) => artefacts.diagrams[k].updating);
