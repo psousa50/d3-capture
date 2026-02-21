@@ -40,3 +40,10 @@ export function listMeetings(projectId: string): Meeting[] {
     .prepare("SELECT * FROM meetings WHERE project_id = ? ORDER BY started_at DESC")
     .all(projectId) as Meeting[];
 }
+
+export function deleteMeeting(id: string) {
+  const db = getDb();
+  db.prepare("DELETE FROM transcript_chunks WHERE meeting_id = ?").run(id);
+  db.prepare("DELETE FROM documents WHERE meeting_id = ?").run(id);
+  db.prepare("DELETE FROM meetings WHERE id = ?").run(id);
+}

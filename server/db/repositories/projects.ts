@@ -30,3 +30,19 @@ export function getProject(id: string): Project | undefined {
   const db = getDb();
   return db.prepare("SELECT * FROM projects WHERE id = ?").get(id) as Project | undefined;
 }
+
+export function deleteProject(id: string) {
+  const db = getDb();
+  const meetingIds = db
+    .prepare("SELECT id FROM meetings WHERE project_id = ?")
+    .all(id) as { id: string }[];
+
+  for (const { id: mid } of meetingIds) {
+    db.prepare("DELETE FROM transcript_chunks WHERE meeting_id = ?").run(mid);
+    db.prepare("DELETE FROM documents WHERE meeting_id = ?").run(mid);
+  }
+
+  db.prepare("DELETE FROM meetings WHERE project_id = ?").run(id);
+  db.prepare("DELETE FROM artefacts WHERE project_id = ?").run(id);
+  db.prepare("DELETE FROM projects WHERE id = ?").run(id);
+}

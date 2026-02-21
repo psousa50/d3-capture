@@ -27,6 +27,16 @@ export function getArtefacts(projectId: string): ArtefactRow[] {
     .all(projectId) as ArtefactRow[];
 }
 
+export function deleteDiagramArtefacts(projectId: string) {
+  const db = getDb();
+  db.prepare("DELETE FROM artefacts WHERE project_id = ? AND type LIKE 'diagram:%'").run(projectId);
+}
+
+export function deleteArtefact(projectId: string, type: string) {
+  const db = getDb();
+  db.prepare("DELETE FROM artefacts WHERE project_id = ? AND type = ?").run(projectId, type);
+}
+
 export function getArtefact(projectId: string, type: string): ArtefactRow | undefined {
   const db = getDb();
   return db
