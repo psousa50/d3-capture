@@ -3,6 +3,8 @@ import type { Server } from "socket.io";
 import { TranscriptAccumulator } from "./transcript-accumulator";
 import { ContextManager } from "./context-manager";
 import { GenerationOrchestrator } from "./generation-orchestrator";
+import { insertChunk } from "./db/repositories/transcripts";
+import { insertDocument } from "./db/repositories/documents";
 
 interface ParticipantStream {
   socketId: string;
@@ -12,6 +14,7 @@ interface ParticipantStream {
 export class AudioHandler {
   private io: Server;
   private room: string;
+  private meetingId: string;
   private accumulator: TranscriptAccumulator;
   private contextManager: ContextManager;
   private orchestrator: GenerationOrchestrator;
@@ -21,7 +24,8 @@ export class AudioHandler {
   constructor(io: Server, room: string, projectId: string, meetingId: string) {
     this.io = io;
     this.room = room;
-    this.contextManager = new ContextManager(projectId);
+    this.meetingId = meetingId;
+    this.contextManager = new ContextManager(projectId, meetingId);
     this.orchestrator = new GenerationOrchestrator(this.io, this.room, this.contextManager);
 
     this.accumulator = new TranscriptAccumulator(meetingId, (transcript) => {
@@ -83,6 +87,30 @@ export class AudioHandler {
 
     this.contextManager.addTranscript(transcript);
     this.orchestrator.trigger(transcript);
+  }
+
+  async handleTranscriptImport(text: string) {
+    const doc = insertDocument(this.meetingId, text);
+    this.emit("document-added", { id: doc.id, content: doc.content, createdAt: doc.created_at });
+
+    const now = Date.now();
+    const transcript = {
+      chunks: [{ text, isFinal: true as const, timestamp: now }],
+      fullText: text,
+      startTime: now,
+      endTime: now,
+    };
+
+    this.contextManager.addTranscript(transcript);
+    await this.orchestrator.triggerAll(transcript);
+  }
+
+  async regenerateDiagrams() {
+    await this.orchestrator.regenerateDiagrams();
+  }
+
+  async regenerateSingleDiagram(diagramType: string, renderer: "mermaid" | "html" = "mermaid") {
+    await this.orchestrator.regenerateSingleDiagram(diagramType, renderer);
   }
 
   stop() {

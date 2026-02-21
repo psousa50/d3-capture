@@ -24,7 +24,10 @@ Rules:
 Common Mermaid syntax patterns:
   graph TD / graph LR for flowcharts: A[Node] -->|label| B[Node]
   sequenceDiagram: participant A / A->>B: message
-  erDiagram: TABLE ||--o{ OTHER : relationship
+  erDiagram: relationships use TABLE_A ||--o{ TABLE_B : label
+    Attributes MUST use curly brace blocks, NOT the colon syntax:
+    CORRECT: TABLE { string name PK \n string email }
+    WRONG: TABLE : string name PK
   C4Context / C4Container for C4 diagrams
   stateDiagram-v2 for state machines
   classDiagram for class diagrams`;

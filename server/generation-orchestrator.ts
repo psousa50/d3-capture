@@ -8,6 +8,53 @@ import { triageArtefacts } from "./triage";
 import { AccumulatedTranscript } from "./transcript-accumulator";
 
 const GENERATION_TIMEOUT_MS = 60_000;
+
+const MERMAID_KEYWORDS = /^(?:graph|sequenceDiagram|erDiagram|classDiagram|stateDiagram|flowchart|C4Context|C4Container|gantt|pie|gitGraph)\b/;
+const MERMAID_PROSE_STRIP = /^[\s\S]*?\n((?:graph|sequenceDiagram|erDiagram|classDiagram|stateDiagram|flowchart|C4Context|C4Container|gantt|pie|gitGraph)\b[\s\S]*)$/;
+
+function stripCodeFences(text: string): string {
+  let cleaned = text.trim();
+  cleaned = cleaned.replace(/^```(?:mermaid)?\s*\n?/i, "");
+  cleaned = cleaned.replace(/\n?```\s*$/, "");
+  const proseMatch = cleaned.match(MERMAID_PROSE_STRIP);
+  if (proseMatch) cleaned = proseMatch[1];
+  return cleaned.trim();
+}
+
+function isValidMermaid(text: string): boolean {
+  return MERMAID_KEYWORDS.test(text.trim());
+}
+
+function fixErDiagramAttributes(content: string): string {
+  if (!content.trim().startsWith("erDiagram")) return content;
+
+  const lines = content.split("\n");
+  const result: string[] = [];
+  const attrs = new Map<string, string[]>();
+
+  const flush = () => {
+    for (const [entity, list] of attrs) {
+      result.push(`    ${entity} {`);
+      for (const a of list) result.push(`        ${a}`);
+      result.push(`    }`);
+    }
+    attrs.clear();
+  };
+
+  for (const line of lines) {
+    const match = line.match(/^\s+(\w+)\s+:\s+(.+)$/);
+    if (match && !line.includes("--")) {
+      const [, entity, attr] = match;
+      if (!attrs.has(entity)) attrs.set(entity, []);
+      attrs.get(entity)!.push(attr.trim());
+    } else {
+      flush();
+      result.push(line);
+    }
+  }
+  flush();
+  return result.join("\n");
+}
 const ARTEFACT_TYPES = ["spec", "stories", "diagram"];
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -74,6 +121,87 @@ export class GenerationOrchestrator {
         await withTimeout(this.runDiagramGeneration(), GENERATION_TIMEOUT_MS, "diagrams")
           .catch((err) => console.error("[orchestrator] Diagram generation failed:", err));
       }
+
+      console.log("[orchestrator] Generation complete");
+    } finally {
+      this.generating = false;
+      if (this.pendingTranscript) {
+        const pending = this.pendingTranscript;
+        this.pendingTranscript = null;
+        this.trigger(pending);
+      }
+    }
+  }
+
+  async regenerateDiagrams() {
+    if (this.generating) return;
+    this.generating = true;
+
+    try {
+      console.log("[orchestrator] Regenerating all diagrams (manual)");
+      this.contextManager.clearDiagramArtefacts();
+      await withTimeout(this.runDiagramGeneration(), GENERATION_TIMEOUT_MS, "diagrams")
+        .catch((err) => console.error("[orchestrator] Diagram regeneration failed:", err));
+    } finally {
+      this.generating = false;
+    }
+  }
+
+  async regenerateSingleDiagram(diagramType: string, renderer: "mermaid" | "html" = "mermaid") {
+    if (this.generating) return;
+    this.generating = true;
+
+    try {
+      const diagramKey = `diagram:${diagramType}`;
+      console.log(`[orchestrator] Regenerating ${diagramKey} (manual)`);
+
+      const context = this.contextManager.buildPromptContext("diagram");
+      if (!context.trim()) {
+        console.warn("[diagram] Empty context, skipping");
+        return;
+      }
+
+      this.contextManager.clearSingleDiagram(diagramType);
+
+      const provider = getDiagramProvider();
+      const plan: DiagramPlan = { type: diagramType, focus: `regenerate ${diagramType}`, renderer };
+
+      await withTimeout(
+        this.runSingleDiagram(provider, context, plan),
+        GENERATION_TIMEOUT_MS,
+        diagramKey,
+      );
+    } catch (err) {
+      console.error(`[orchestrator] Single diagram regeneration failed:`, err);
+    } finally {
+      this.generating = false;
+    }
+  }
+
+  async triggerAll(transcript: AccumulatedTranscript) {
+    if (this.generating) {
+      this.pendingTranscript = transcript;
+      return;
+    }
+    this.generating = true;
+    this.pendingTranscript = null;
+
+    try {
+      console.log("[orchestrator] Generating all artefacts (transcript import)");
+
+      const textTasks: Promise<void>[] = [];
+      for (const generator of this.generators.values()) {
+        textTasks.push(withTimeout(this.runGenerator(generator), GENERATION_TIMEOUT_MS, generator.type));
+      }
+
+      if (textTasks.length > 0) {
+        await Promise.allSettled(textTasks);
+        console.log("[orchestrator] Text artefacts complete");
+      }
+
+      console.log("[orchestrator] Starting diagram generation");
+      await withTimeout(this.runDiagramGeneration(), GENERATION_TIMEOUT_MS, "diagrams")
+        .catch((err) => console.error("[orchestrator] Diagram generation failed:", err));
 
       console.log("[orchestrator] Generation complete");
     } finally {
@@ -178,6 +306,16 @@ export class GenerationOrchestrator {
         this.emit("artefact-chunk", { artefactType, chunk });
       }
 
+      if (entry.renderer === "mermaid") {
+        fullContent = stripCodeFences(fullContent);
+        fullContent = fixErDiagramAttributes(fullContent);
+        if (!isValidMermaid(fullContent)) {
+          console.error(`[generator:${artefactType}] Invalid Mermaid syntax, discarding`);
+          this.emit("artefact-error", { artefactType, error: "Generated invalid diagram syntax" });
+          return;
+        }
+      }
+
       this.contextManager.updateArtefact(artefactType, fullContent);
 
       this.emit("artefact-complete", { artefactType, content: fullContent });
@@ -190,6 +328,7 @@ export class GenerationOrchestrator {
       });
     }
   }
+
 
   private emit(event: string, data: Record<string, unknown>) {
     this.io.to(this.room).emit(event, data);

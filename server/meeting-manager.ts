@@ -1,8 +1,9 @@
 import type { Server, Socket } from "socket.io";
 import { AudioHandler } from "./audio-handler";
-import { getMeeting, endMeeting } from "./db/repositories/meetings";
-import { getChunks } from "./db/repositories/transcripts";
+import { endMeeting } from "./db/repositories/meetings";
+import { getChunks, updateChunk, deleteChunk } from "./db/repositories/transcripts";
 import { getArtefacts } from "./db/repositories/artefacts";
+import { getDocuments, deleteDocument } from "./db/repositories/documents";
 
 const DISCONNECT_GRACE_MS = 30_000;
 
@@ -38,9 +39,18 @@ export class MeetingManager {
     socket.data.meetingId = meetingId;
     socket.data.role = "producer";
 
-    active.handler.addParticipant(socket.id);
     this.sendSnapshot(socket, meetingId, projectId);
     this.broadcastPresence(active);
+
+    socket.on("start-recording", () => {
+      active.handler.addParticipant(socket.id);
+      console.log(`[meeting:${meetingId}] Recording started by ${socket.id}`);
+    });
+
+    socket.on("stop-recording", () => {
+      active.handler.removeParticipant(socket.id);
+      console.log(`[meeting:${meetingId}] Recording stopped by ${socket.id}`);
+    });
 
     socket.on("audio-data", (data: ArrayBuffer) => {
       active.handler.handleAudio(socket.id, Buffer.from(data));
@@ -48,6 +58,40 @@ export class MeetingManager {
 
     socket.on("text-input", (text: string) => {
       active.handler.handleTextInput(text);
+    });
+
+    socket.on("edit-transcript", (data: { id: number; text: string }) => {
+      if (!data?.id || typeof data.text !== "string") return;
+      updateChunk(data.id, data.text.trim());
+      this.io.to(room).emit("transcript-edited", { id: data.id, text: data.text.trim() });
+    });
+
+    socket.on("delete-transcript", (data: { id: number }) => {
+      if (!data?.id) return;
+      deleteChunk(data.id);
+      this.io.to(room).emit("transcript-deleted", { id: data.id });
+    });
+
+    socket.on("regenerate-diagrams", () => {
+      console.log(`[meeting:${meetingId}] Diagram regeneration (all) requested by ${socket.id}`);
+      active.handler.regenerateDiagrams();
+    });
+
+    socket.on("regenerate-diagram", (data: { type: string; renderer?: "mermaid" | "html" }) => {
+      if (!data?.type) return;
+      console.log(`[meeting:${meetingId}] Diagram regeneration (${data.type}) requested by ${socket.id}`);
+      active.handler.regenerateSingleDiagram(data.type, data.renderer ?? "mermaid");
+    });
+
+    socket.on("import-transcript", (text: string) => {
+      if (typeof text !== "string" || !text.trim()) return;
+      active.handler.handleTranscriptImport(text.trim());
+    });
+
+    socket.on("delete-document", (data: { id: string }) => {
+      if (!data?.id) return;
+      deleteDocument(data.id);
+      this.io.to(room).emit("document-deleted", { id: data.id });
     });
 
     console.log(`[meeting:${meetingId}] Producer joined: ${socket.id} (${active.producers.size} total)`);
@@ -126,8 +170,10 @@ export class MeetingManager {
   private sendSnapshot(socket: Socket, meetingId: string, projectId: string) {
     const chunks = getChunks(meetingId);
     const artefactRows = getArtefacts(projectId);
+    const docs = getDocuments(meetingId);
 
     const transcript = chunks.map((c) => ({
+      id: c.id,
       text: c.text,
       speaker: c.speaker,
       isFinal: true,
@@ -138,7 +184,13 @@ export class MeetingManager {
       artefacts[row.type] = row.content;
     }
 
-    socket.emit("meeting-state", { transcript, artefacts });
+    const documents = docs.map((d) => ({
+      id: d.id,
+      content: d.content,
+      createdAt: d.created_at,
+    }));
+
+    socket.emit("meeting-state", { transcript, artefacts, documents });
   }
 
   private shutdownMeeting(meetingId: string) {

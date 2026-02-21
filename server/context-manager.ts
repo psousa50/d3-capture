@@ -1,6 +1,8 @@
 import { AccumulatedTranscript } from "./transcript-accumulator";
 import { getProviderForGenerator } from "./llm/config";
-import { getArtefacts, upsertArtefact } from "./db/repositories/artefacts";
+import { getArtefacts, upsertArtefact, deleteDiagramArtefacts, deleteArtefact } from "./db/repositories/artefacts";
+import { getChunks } from "./db/repositories/transcripts";
+import { getDocuments } from "./db/repositories/documents";
 
 const VERBATIM_WINDOW_MS = 5 * 60 * 1000;
 const SUMMARISE_INTERVAL_MS = 5 * 60 * 1000;
@@ -19,15 +21,36 @@ export class ContextManager {
   private lastSummarisedAt: number = Date.now();
   private summarising = false;
 
-  constructor(projectId: string) {
+  constructor(projectId: string, meetingId: string) {
     this.projectId = projectId;
-    this.hydrateArtefacts();
+    this.hydrate(meetingId);
   }
 
-  private hydrateArtefacts() {
+  private hydrate(meetingId: string) {
     const rows = getArtefacts(this.projectId);
     for (const row of rows) {
       this.artefactStates[row.type] = row.content;
+    }
+
+    const chunks = getChunks(meetingId);
+    const docs = getDocuments(meetingId);
+
+    for (const chunk of chunks) {
+      this.transcripts.push({
+        chunks: [{ text: chunk.text, isFinal: true, timestamp: chunk.timestamp }],
+        fullText: chunk.text,
+        startTime: chunk.timestamp,
+        endTime: chunk.timestamp,
+      });
+    }
+
+    for (const doc of docs) {
+      this.transcripts.push({
+        chunks: [{ text: doc.content, isFinal: true, timestamp: doc.created_at }],
+        fullText: doc.content,
+        startTime: doc.created_at,
+        endTime: doc.created_at,
+      });
     }
   }
 
@@ -67,6 +90,9 @@ export class ContextManager {
         .map((t) => t.fullText)
         .join("\n\n");
       parts.push(`## Recent conversation\n${recentText}`);
+    } else if (!ctx.summary && this.transcripts.length > 0) {
+      const allText = this.transcripts.map((t) => t.fullText).join("\n\n");
+      parts.push(`## Meeting conversation\n${allText}`);
     }
 
     if (generatorType === "diagram") {
@@ -96,6 +122,20 @@ export class ContextManager {
 
   getArtefactStates(): Record<string, string> {
     return { ...this.artefactStates };
+  }
+
+  clearDiagramArtefacts() {
+    for (const key of Object.keys(this.artefactStates)) {
+      if (key.startsWith("diagram:")) {
+        delete this.artefactStates[key];
+      }
+    }
+    deleteDiagramArtefacts(this.projectId);
+  }
+
+  clearSingleDiagram(diagramType: string) {
+    delete this.artefactStates[`diagram:${diagramType}`];
+    deleteArtefact(this.projectId, `diagram:${diagramType}`);
   }
 
   private async maybeSummarise() {
