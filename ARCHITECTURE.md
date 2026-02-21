@@ -20,7 +20,8 @@ server/
 │   ├── config.ts                Factory with per-generator provider routing via env vars
 │   ├── anthropic.ts             Anthropic SDK wrapper (default: claude-haiku-4-5)
 │   ├── openai.ts                OpenAI SDK wrapper (default: gpt-4o)
-│   └── openai-compatible.ts     Generic OpenAI-compatible provider (Groq)
+│   ├── openai-compatible.ts     Generic OpenAI-compatible provider (Groq)
+│   └── claude-code.ts           Claude Code CLI provider (uses Max subscription via `claude -p`)
 ├── db/
 │   ├── connection.ts            SQLite singleton, WAL mode, foreign keys on
 │   ├── schema.ts                Table creation and migrations
@@ -115,7 +116,7 @@ projects (id, name, created_at)
 
 ## LLM configuration
 
-Provider interface (`LLMProvider.stream()`) with three implementations. Per-generator routing via env vars:
+Provider interface (`LLMProvider.stream()`) with four implementations. Per-generator routing via env vars:
 - `LLM_DEFAULT_PROVIDER` (default: anthropic)
 - `LLM_PROVIDER_{TRIAGE|SPEC|STORIES|DIAGRAM}` — optional overrides
 

@@ -2,8 +2,9 @@ import { LLMProvider } from "./types";
 import { AnthropicProvider } from "./anthropic";
 import { OpenAIProvider } from "./openai";
 import { OpenAICompatibleProvider } from "./openai-compatible";
+import { ClaudeCodeProvider } from "./claude-code";
 
-type ProviderName = "anthropic" | "openai" | "groq";
+type ProviderName = "anthropic" | "openai" | "groq" | "claude-code";
 type GeneratorName = "diagram" | "spec" | "stories" | "triage";
 
 interface LLMConfig {
@@ -55,6 +56,8 @@ function createProvider(name: ProviderName): LLMProvider {
         baseURL: "https://api.groq.com/openai/v1",
         model: process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile",
       });
+    case "claude-code":
+      return new ClaudeCodeProvider(process.env.CLAUDE_CODE_MODEL ?? "sonnet");
     default:
       throw new Error(`Unknown LLM provider: ${name}`);
   }

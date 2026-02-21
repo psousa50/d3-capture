@@ -7,7 +7,7 @@ import { ContextManager } from "./context-manager";
 import { triageArtefacts } from "./triage";
 import { AccumulatedTranscript } from "./transcript-accumulator";
 
-const GENERATION_TIMEOUT_MS = 60_000;
+const GENERATION_TIMEOUT_MS = 120_000;
 
 const MERMAID_KEYWORDS = /^(?:graph|sequenceDiagram|erDiagram|classDiagram|stateDiagram|flowchart|C4Context|C4Container|gantt|pie|gitGraph)\b/;
 const MERMAID_PROSE_STRIP = /^[\s\S]*?\n((?:graph|sequenceDiagram|erDiagram|classDiagram|stateDiagram|flowchart|C4Context|C4Container|gantt|pie|gitGraph)\b[\s\S]*)$/;
@@ -69,7 +69,7 @@ function fixErDiagramAttributes(content: string): string {
   flush();
   return result.join("\n");
 }
-const ARTEFACT_TYPES = ["spec", "stories", "diagram"];
+const BASE_ARTEFACT_TYPES = ["spec", "stories", "diagram"];
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -97,6 +97,13 @@ export class GenerationOrchestrator {
     this.generators.set(stories.type, stories);
   }
 
+  private getTriageTypes(): string[] {
+    const diagramKeys = Object.keys(this.contextManager.getArtefactStates())
+      .filter((k) => k.startsWith("diagram:"));
+    if (diagramKeys.length > 0) return ["spec", "stories", ...diagramKeys];
+    return BASE_ARTEFACT_TYPES;
+  }
+
   async trigger(transcript: AccumulatedTranscript) {
     if (this.generating) {
       this.pendingTranscript = transcript;
@@ -106,17 +113,20 @@ export class GenerationOrchestrator {
     this.pendingTranscript = null;
 
     try {
-      const affected = await triageArtefacts(transcript.fullText, ARTEFACT_TYPES);
+      const affected = await triageArtefacts(transcript.fullText, this.getTriageTypes());
       console.log("[orchestrator] Triage result:", affected.length === 0 ? "nothing to update" : affected.join(", "));
 
       if (affected.length === 0) return;
 
       const textTasks: Promise<void>[] = [];
-      let needsDiagrams = false;
+      const diagramTypes: string[] = [];
+      let needsAllDiagrams = false;
 
       for (const type of affected) {
         if (type === "diagram") {
-          needsDiagrams = true;
+          needsAllDiagrams = true;
+        } else if (type.startsWith("diagram:")) {
+          diagramTypes.push(type.slice("diagram:".length));
         } else {
           const generator = this.generators.get(type);
           if (generator) {
@@ -130,9 +140,13 @@ export class GenerationOrchestrator {
         console.log("[orchestrator] Text artefacts complete");
       }
 
-      if (needsDiagrams) {
-        console.log("[orchestrator] Starting diagram generation");
+      if (needsAllDiagrams) {
+        console.log("[orchestrator] Starting diagram generation (all)");
         await withTimeout(this.runDiagramGeneration(), GENERATION_TIMEOUT_MS, "diagrams")
+          .catch((err) => console.error("[orchestrator] Diagram generation failed:", err));
+      } else if (diagramTypes.length > 0) {
+        console.log("[orchestrator] Starting diagram generation:", diagramTypes.join(", "));
+        await withTimeout(this.runDiagramGeneration(diagramTypes), GENERATION_TIMEOUT_MS, "diagrams")
           .catch((err) => console.error("[orchestrator] Diagram generation failed:", err));
       }
 
@@ -258,7 +272,7 @@ export class GenerationOrchestrator {
     }
   }
 
-  private async runDiagramGeneration() {
+  private async runDiagramGeneration(onlyTypes?: string[]) {
     const context = this.contextManager.buildPromptContext("diagram");
     if (!context.trim()) {
       console.warn("[diagram] Empty context, skipping diagram generation");
@@ -281,8 +295,11 @@ export class GenerationOrchestrator {
       let plan: DiagramPlan[];
 
       if (existingDiagrams.length > 0) {
-        console.log("[diagram] Updating existing diagrams:", existingDiagrams.map((d) => d.type).join(", "));
-        plan = existingDiagrams.map((d) => ({
+        const toUpdate = onlyTypes
+          ? existingDiagrams.filter((d) => onlyTypes.includes(d.type))
+          : existingDiagrams;
+        console.log("[diagram] Updating diagrams:", toUpdate.map((d) => d.type).join(", "));
+        plan = toUpdate.map((d) => ({
           type: d.type,
           focus: `update ${d.type}`,
           renderer: (d.content.trimStart().startsWith("<") || d.content.includes("<!DOCTYPE") || d.content.trimStart().startsWith("```html")) ? "html" as const : "mermaid" as const,
@@ -293,21 +310,21 @@ export class GenerationOrchestrator {
         console.log("[diagram] Plan:", plan.map((p) => `${p.type} (${p.renderer})`).join(", "));
       }
 
-      for (const entry of plan) {
+      const diagramTasks = plan.map((entry) => {
         const diagramKey = `diagram:${entry.type}`;
         const currentContent = artefactStates[diagramKey];
         console.log(`[diagram] Generating: ${diagramKey}`);
-        try {
-          await withTimeout(
-            this.runSingleDiagram(provider, context, entry, currentContent),
-            GENERATION_TIMEOUT_MS,
-            diagramKey,
-          );
-          console.log(`[diagram] Complete: ${diagramKey}`);
-        } catch (err) {
-          console.error(`[diagram] Failed: ${diagramKey}`, err);
-        }
-      }
+        return withTimeout(
+          this.runSingleDiagram(provider, context, entry, currentContent),
+          GENERATION_TIMEOUT_MS,
+          diagramKey,
+        ).then(
+          () => console.log(`[diagram] Complete: ${diagramKey}`),
+          (err) => console.error(`[diagram] Failed: ${diagramKey}`, err),
+        );
+      });
+
+      await Promise.allSettled(diagramTasks);
 
       this.emit("artefact-complete", { artefactType: "diagram" });
     } catch (err) {

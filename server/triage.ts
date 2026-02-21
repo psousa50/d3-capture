@@ -8,9 +8,11 @@ Rules:
 - "spec" = technical specification document
 - "stories" = user stories with acceptance criteria
 - "diagram" = technical diagrams (architecture, ER, sequence, flowcharts, wireframes)
+- When specific diagram subtypes are listed (e.g. "diagram:wireframe"), return those exact keys instead of "diagram"
+- Only return "diagram" when no subtypes are listed or when ALL diagrams are affected
 
 Respond with ONLY a JSON array of artefact type strings. No markdown, no explanation.
-Examples: ["spec", "diagram"] or ["stories"] or []`;
+Examples: ["spec", "diagram:wireframe"] or ["stories"] or []`;
 
 const NORMALISE_MAP: Record<string, string> = {
   diagrams: "diagram",
@@ -23,8 +25,9 @@ const NORMALISE_MAP: Record<string, string> = {
   "user-stories": "stories",
 };
 
-function normalise(raw: string): string | null {
+function normalise(raw: string, artefactTypes: string[]): string | null {
   const key = raw.toLowerCase().trim();
+  if (artefactTypes.includes(key)) return key;
   return NORMALISE_MAP[key] ?? null;
 }
 
@@ -57,7 +60,7 @@ export async function triageArtefacts(
     }
 
     const normalised = parsed
-      .map((t: string) => normalise(t))
+      .map((t: string) => normalise(t, artefactTypes))
       .filter((t): t is string => t !== null && artefactTypes.includes(t));
 
     const unique = [...new Set(normalised)];
