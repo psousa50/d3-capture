@@ -58,7 +58,7 @@ export default function MeetingPage() {
         </div>
       </header>
       <div className="flex flex-1 overflow-hidden">
-        <div className="w-1/3 border-r border-zinc-800">
+        <div className="w-1/4 border-r border-zinc-800">
           <TranscriptPanel
             entries={transcript}
             onEdit={editTranscript}
