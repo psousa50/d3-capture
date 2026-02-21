@@ -11,12 +11,26 @@ interface LLMConfig {
   generators: Partial<Record<GeneratorName, ProviderName>>;
 }
 
+function readGeneratorOverrides(): Partial<Record<GeneratorName, ProviderName>> {
+  const overrides: Partial<Record<GeneratorName, ProviderName>> = {};
+  const names: GeneratorName[] = ["triage", "spec", "stories", "diagram"];
+  for (const name of names) {
+    const envKey = `LLM_PROVIDER_${name.toUpperCase()}`;
+    const value = process.env[envKey] as ProviderName | undefined;
+    if (value) overrides[name] = value;
+  }
+  return overrides;
+}
+
 const config: LLMConfig = {
   defaultProvider: (process.env.LLM_DEFAULT_PROVIDER as ProviderName) || "anthropic",
-  generators: {},
+  generators: readGeneratorOverrides(),
 };
 
 console.log(`[llm] default provider: ${config.defaultProvider}`);
+for (const [gen, prov] of Object.entries(config.generators)) {
+  console.log(`[llm] override: ${gen} → ${prov}`);
+}
 
 const providers = new Map<ProviderName, LLMProvider>();
 
