@@ -68,6 +68,7 @@ export function ArtefactTabs({ artefacts }: { artefacts: MeetingArtefacts }) {
             activeDiagram={activeDiagram}
             onSelectDiagram={setActiveDiagram}
             planning={artefacts.diagramsUpdating && diagramKeys.length === 0}
+            error={artefacts.diagramsError}
           />
         )}
         {activeTab === "spec" && (
@@ -93,18 +94,28 @@ function DiagramPanel({
   activeDiagram,
   onSelectDiagram,
   planning,
+  error,
 }: {
   diagrams: MeetingArtefacts["diagrams"];
   diagramKeys: string[];
   activeDiagram: string | null;
   onSelectDiagram: (key: string) => void;
   planning: boolean;
+  error: string | null;
 }) {
   if (planning) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-zinc-500">
         <span className="mr-2 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-blue-400" />
         Planning diagrams...
+      </div>
+    );
+  }
+
+  if (diagramKeys.length === 0 && error) {
+    return (
+      <div className="flex h-full items-center justify-center text-sm text-amber-400">
+        Diagram generation failed: {error}
       </div>
     );
   }

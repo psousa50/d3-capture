@@ -50,20 +50,31 @@ export class GenerationOrchestrator {
 
       if (affected.length === 0) return;
 
-      const tasks: Promise<void>[] = [];
+      const textTasks: Promise<void>[] = [];
+      let needsDiagrams = false;
 
       for (const type of affected) {
         if (type === "diagram") {
-          tasks.push(withTimeout(this.runDiagramGeneration(), GENERATION_TIMEOUT_MS, "diagrams"));
+          needsDiagrams = true;
         } else {
           const generator = this.generators.get(type);
           if (generator) {
-            tasks.push(withTimeout(this.runGenerator(generator), GENERATION_TIMEOUT_MS, type));
+            textTasks.push(withTimeout(this.runGenerator(generator), GENERATION_TIMEOUT_MS, type));
           }
         }
       }
 
-      await Promise.allSettled(tasks);
+      if (textTasks.length > 0) {
+        await Promise.allSettled(textTasks);
+        console.log("[orchestrator] Text artefacts complete");
+      }
+
+      if (needsDiagrams) {
+        console.log("[orchestrator] Starting diagram generation");
+        await withTimeout(this.runDiagramGeneration(), GENERATION_TIMEOUT_MS, "diagrams")
+          .catch((err) => console.error("[orchestrator] Diagram generation failed:", err));
+      }
+
       console.log("[orchestrator] Generation complete");
     } finally {
       this.generating = false;
@@ -97,44 +108,55 @@ export class GenerationOrchestrator {
         content: fullContent,
       });
     } catch (err) {
+      const message = err instanceof Error ? err.message : "Generation failed";
       console.error(`[generator:${generator.type}] Error:`, err);
       this.emit("artefact-error", {
         artefactType: generator.type,
-        error: "Generation failed",
+        error: message,
       });
     }
   }
 
   private async runDiagramGeneration() {
     const context = this.contextManager.buildPromptContext("diagram");
-    if (!context.trim()) return;
+    if (!context.trim()) {
+      console.warn("[diagram] Empty context, skipping diagram generation");
+      return;
+    }
 
     this.emit("artefact-start", { artefactType: "diagram" });
 
     try {
       const provider = getDiagramProvider();
+      console.log("[diagram] Planning diagrams...");
       const plan = await planDiagrams(provider, context);
-      console.log("[diagram] Plan:", plan.map((p) => p.type).join(", "));
+      console.log("[diagram] Plan:", plan.map((p) => `${p.type} (${p.renderer})`).join(", "));
 
       const artefactStates = this.contextManager.getArtefactStates();
 
-      const tasks = plan.map((entry) => {
+      for (const entry of plan) {
         const diagramKey = `diagram:${entry.type}`;
         const currentContent = artefactStates[diagramKey];
-        return withTimeout(
-          this.runSingleDiagram(provider, context, entry, currentContent),
-          GENERATION_TIMEOUT_MS,
-          diagramKey,
-        );
-      });
-      await Promise.allSettled(tasks);
+        console.log(`[diagram] Generating: ${diagramKey}`);
+        try {
+          await withTimeout(
+            this.runSingleDiagram(provider, context, entry, currentContent),
+            GENERATION_TIMEOUT_MS,
+            diagramKey,
+          );
+          console.log(`[diagram] Complete: ${diagramKey}`);
+        } catch (err) {
+          console.error(`[diagram] Failed: ${diagramKey}`, err);
+        }
+      }
 
       this.emit("artefact-complete", { artefactType: "diagram" });
     } catch (err) {
+      const message = err instanceof Error ? err.message : "Diagram generation failed";
       console.error("[generator:diagram] Error:", err);
       this.emit("artefact-error", {
         artefactType: "diagram",
-        error: "Diagram generation failed",
+        error: message,
       });
     }
   }
@@ -160,10 +182,11 @@ export class GenerationOrchestrator {
 
       this.emit("artefact-complete", { artefactType, content: fullContent });
     } catch (err) {
+      const message = err instanceof Error ? err.message : "Generation failed";
       console.error(`[generator:${artefactType}] Error:`, err);
       this.emit("artefact-error", {
         artefactType,
-        error: "Generation failed",
+        error: message,
       });
     }
   }

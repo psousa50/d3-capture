@@ -28,6 +28,7 @@ export interface MeetingArtefacts {
   stories: ArtefactState;
   diagrams: Record<string, DiagramState>;
   diagramsUpdating: boolean;
+  diagramsError: string | null;
 }
 
 function diagramLabel(subType: string): string {
@@ -47,6 +48,7 @@ export function useMeeting() {
     stories: { ...EMPTY_ARTEFACT },
     diagrams: {},
     diagramsUpdating: false,
+    diagramsError: null,
   });
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
@@ -59,7 +61,7 @@ export function useMeeting() {
   const handleArtefactStart = useCallback((data: ArtefactUpdate) => {
     const key = data.artefactType;
     if (key === "diagram") {
-      setArtefacts((prev) => ({ ...prev, diagramsUpdating: true }));
+      setArtefacts((prev) => ({ ...prev, diagramsUpdating: true, diagramsError: null }));
     } else if (key.startsWith("diagram:")) {
       const subType = key.slice("diagram:".length);
       setArtefacts((prev) => ({
@@ -137,7 +139,11 @@ export function useMeeting() {
   const handleArtefactError = useCallback((data: ArtefactUpdate) => {
     const key = data.artefactType;
     if (key === "diagram") {
-      setArtefacts((prev) => ({ ...prev, diagramsUpdating: false }));
+      setArtefacts((prev) => ({
+        ...prev,
+        diagramsUpdating: false,
+        diagramsError: data.error ?? "Diagram generation failed",
+      }));
     } else if (key.startsWith("diagram:")) {
       const subType = key.slice("diagram:".length);
       setArtefacts((prev) => ({
@@ -186,6 +192,8 @@ export function useMeeting() {
   }, []);
 
   const startMeeting = useCallback(async (meetingId: string) => {
+    if (socketRef.current) return;
+
     try {
       setStatus("connecting");
       setError(null);

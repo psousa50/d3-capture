@@ -18,7 +18,8 @@ export default function MeetingPage() {
     if (status === "idle" && meetingId) {
       startMeeting(meetingId);
     }
-  }, [meetingId, status, startMeeting]);
+    return () => stopMeeting();
+  }, [meetingId, startMeeting, stopMeeting]);
 
   return (
     <div className="flex h-screen flex-col">

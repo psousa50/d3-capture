@@ -127,5 +127,6 @@ export class TranscriptAccumulator {
       clearTimeout(this.silenceTimer);
       this.silenceTimer = null;
     }
+    this.emit();
   }
 }
