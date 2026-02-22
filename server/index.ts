@@ -1,5 +1,8 @@
 import "dotenv/config";
 import { createServer } from "http";
+import { createServer as createSecureServer } from "https";
+import { readFileSync, existsSync } from "fs";
+import { join } from "path";
 import next from "next";
 import { parse } from "url";
 import { Server } from "socket.io";
@@ -12,14 +15,25 @@ const hostname = "localhost";
 const port = parseInt(process.env.PORT || "3000", 10);
 const authSecret = process.env.AUTH_SECRET;
 
+const certPath = join(__dirname, "..", "certs", "cert.pem");
+const keyPath = join(__dirname, "..", "certs", "key.pem");
+const useHttps = existsSync(certPath) && existsSync(keyPath);
+
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
 app.prepare().then(() => {
-  const server = createServer((req, res) => {
+  const requestHandler = (req: any, res: any) => {
     const parsedUrl = parse(req.url!, true);
     handle(req, res, parsedUrl);
-  });
+  };
+
+  const server = useHttps
+    ? createSecureServer(
+        { cert: readFileSync(certPath), key: readFileSync(keyPath) },
+        requestHandler,
+      )
+    : createServer(requestHandler);
 
   const io = new Server(server, {
     maxHttpBufferSize: 1e6,
@@ -73,7 +87,8 @@ app.prepare().then(() => {
     });
   });
 
+  const protocol = useHttps ? "https" : "http";
   server.listen(port, () => {
-    console.log(`> Ready on http://${hostname}:${port}`);
+    console.log(`> Ready on ${protocol}://${hostname}:${port}`);
   });
 });
