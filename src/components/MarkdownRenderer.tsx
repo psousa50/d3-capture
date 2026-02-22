@@ -1,6 +1,7 @@
 "use client";
 
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 export function MarkdownRenderer({
   content,
@@ -19,7 +20,7 @@ export function MarkdownRenderer({
 
   return (
     <div className="prose prose-invert prose-sm h-full max-w-none overflow-y-auto p-4">
-      <ReactMarkdown>{content}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
     </div>
   );
 }
