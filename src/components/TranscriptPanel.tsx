@@ -113,6 +113,32 @@ function TranscriptEntryRow({
   );
 }
 
+interface GroupedEntry {
+  entries: TranscriptEntry[];
+  speaker: string | number | null | undefined;
+  text: string;
+  isFinal: boolean;
+}
+
+function groupConsecutiveEntries(entries: TranscriptEntry[]): GroupedEntry[] {
+  const groups: GroupedEntry[] = [];
+  for (const entry of entries) {
+    const last = groups[groups.length - 1];
+    if (last && last.speaker === entry.speaker && last.isFinal && entry.isFinal) {
+      last.entries.push(entry);
+      last.text += " " + entry.text;
+    } else {
+      groups.push({
+        entries: [entry],
+        speaker: entry.speaker,
+        text: entry.text,
+        isFinal: entry.isFinal,
+      });
+    }
+  }
+  return groups;
+}
+
 export function TranscriptPanel({
   entries,
   onEdit,
@@ -128,6 +154,8 @@ export function TranscriptPanel({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [entries]);
 
+  const groups = groupConsecutiveEntries(entries);
+
   return (
     <div className="flex h-full flex-col">
       <h2 className="border-b border-zinc-800 px-4 py-3 text-sm font-medium text-zinc-400">
@@ -137,13 +165,24 @@ export function TranscriptPanel({
         {entries.length === 0 && (
           <p className="text-sm text-zinc-600">No transcript yet.</p>
         )}
-        {entries.map((entry, i) => (
-          <TranscriptEntryRow
-            key={entry.id ?? `live-${i}`}
-            entry={entry}
-            onEdit={onEdit}
-            onDelete={onDelete}
-          />
+        {groups.map((group, i) => (
+          group.entries.length === 1 ? (
+            <TranscriptEntryRow
+              key={group.entries[0].id ?? `live-${i}`}
+              entry={group.entries[0]}
+              onEdit={onEdit}
+              onDelete={onDelete}
+            />
+          ) : (
+            <div key={`group-${group.entries[0].id ?? i}`} className="text-sm text-zinc-200">
+              {group.speaker != null && (
+                <span className={`font-medium ${speakerColour(group.speaker)}`}>
+                  {speakerLabel(group.speaker)}:{" "}
+                </span>
+              )}
+              {group.text}
+            </div>
+          )
         ))}
         <div ref={bottomRef} />
       </div>

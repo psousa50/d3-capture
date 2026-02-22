@@ -8,6 +8,7 @@ import { insertDocument } from "./db/repositories/documents";
 
 interface ParticipantStream {
   socketId: string;
+  speakerIndex: number;
   deepgramWs: WebSocket;
 }
 
@@ -19,6 +20,7 @@ export class AudioHandler {
   private contextManager: ContextManager;
   private orchestrator: GenerationOrchestrator;
   private participants = new Map<string, ParticipantStream>();
+  private nextSpeakerIndex = 0;
   private deepgramKey: string | null = null;
 
   constructor(io: Server, room: string, projectId: string, meetingId: string) {
@@ -46,8 +48,9 @@ export class AudioHandler {
     if (this.participants.has(socketId)) return;
     if (!this.deepgramKey) return;
 
-    const deepgramWs = this.connectDeepgram(this.deepgramKey, socketId);
-    this.participants.set(socketId, { socketId, deepgramWs });
+    const speakerIndex = this.nextSpeakerIndex++;
+    const deepgramWs = this.connectDeepgram(this.deepgramKey, socketId, speakerIndex);
+    this.participants.set(socketId, { socketId, speakerIndex, deepgramWs });
     this.accumulator.addParticipant(socketId);
 
     console.log(`[audio] Participant ${socketId} added (${this.participants.size} total)`);
@@ -123,7 +126,7 @@ export class AudioHandler {
     this.participants.clear();
   }
 
-  private connectDeepgram(apiKey: string, socketId: string): WebSocket {
+  private connectDeepgram(apiKey: string, socketId: string, speakerIndex: number): WebSocket {
     const deepgramUrl =
       "wss://api.deepgram.com/v1/listen?" +
       new URLSearchParams({
@@ -154,14 +157,14 @@ export class AudioHandler {
         this.accumulator.add({
           text: transcript,
           isFinal,
-          speaker: socketId,
+          speaker: String(speakerIndex),
           timestamp: Date.now(),
         });
 
         this.emit("live-transcript", {
           text: transcript,
           isFinal,
-          speaker: socketId,
+          speaker: speakerIndex,
         });
       }
     });
