@@ -167,7 +167,7 @@ export class GenerationOrchestrator {
 
     try {
       console.log("[orchestrator] Regenerating all diagrams (manual)");
-      this.contextManager.clearDiagramArtefacts();
+      await this.contextManager.clearDiagramArtefacts();
       await withTimeout(this.runDiagramGeneration(), GENERATION_TIMEOUT_MS, "diagrams")
         .catch((err) => console.error("[orchestrator] Diagram regeneration failed:", err));
     } finally {
@@ -256,7 +256,7 @@ export class GenerationOrchestrator {
         this.emit("artefact-chunk", { artefactType: generator.type, chunk });
       }
 
-      this.contextManager.updateArtefact(generator.type, fullContent);
+      await this.contextManager.updateArtefact(generator.type, fullContent);
 
       this.emit("artefact-complete", {
         artefactType: generator.type,
@@ -366,7 +366,7 @@ export class GenerationOrchestrator {
         }
       }
 
-      this.contextManager.updateArtefact(artefactType, fullContent);
+      await this.contextManager.updateArtefact(artefactType, fullContent);
 
       this.emit("artefact-complete", { artefactType, content: fullContent });
     } catch (err) {

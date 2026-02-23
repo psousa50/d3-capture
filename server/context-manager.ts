@@ -23,17 +23,17 @@ export class ContextManager {
 
   constructor(projectId: string, meetingId: string) {
     this.projectId = projectId;
-    this.hydrate(meetingId);
+    this.hydrate(meetingId).catch(console.error);
   }
 
-  private hydrate(meetingId: string) {
-    const rows = getArtefacts(this.projectId);
+  private async hydrate(meetingId: string) {
+    const rows = await getArtefacts(this.projectId);
     for (const row of rows) {
       this.artefactStates[row.type] = row.content;
     }
 
-    const chunks = getChunks(meetingId);
-    const docs = getDocuments(meetingId);
+    const chunks = await getChunks(meetingId);
+    const docs = await getDocuments(meetingId);
 
     for (const chunk of chunks) {
       this.transcripts.push({
@@ -59,9 +59,9 @@ export class ContextManager {
     this.maybeSummarise();
   }
 
-  updateArtefact(type: string, content: string) {
+  async updateArtefact(type: string, content: string) {
     this.artefactStates[type] = content;
-    upsertArtefact(this.projectId, type, content);
+    await upsertArtefact(this.projectId, type, content);
   }
 
   getContext(): ContextWindow {
@@ -124,18 +124,18 @@ export class ContextManager {
     return { ...this.artefactStates };
   }
 
-  clearDiagramArtefacts() {
+  async clearDiagramArtefacts() {
     for (const key of Object.keys(this.artefactStates)) {
       if (key.startsWith("diagram:")) {
         delete this.artefactStates[key];
       }
     }
-    deleteDiagramArtefacts(this.projectId);
+    await deleteDiagramArtefacts(this.projectId);
   }
 
-  clearSingleDiagram(diagramType: string) {
+  async clearSingleDiagram(diagramType: string) {
     delete this.artefactStates[`diagram:${diagramType}`];
-    deleteArtefact(this.projectId, `diagram:${diagramType}`);
+    await deleteArtefact(this.projectId, `diagram:${diagramType}`);
   }
 
   private async maybeSummarise() {

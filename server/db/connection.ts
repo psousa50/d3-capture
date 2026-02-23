@@ -1,23 +1,17 @@
-import Database from "better-sqlite3";
-import path from "path";
-import fs from "fs";
+import pg from "pg";
 import { migrate } from "./schema";
 
-const DB_DIR = path.join(process.cwd(), "data");
-const DB_PATH = path.join(DB_DIR, "meetings.db");
+pg.types.setTypeParser(20, Number);
 
-let db: Database.Database | null = null;
+let pool: pg.Pool | null = null;
 
-export function getDb(): Database.Database {
-  if (db) return db;
+export function getPool(): pg.Pool {
+  if (!pool) {
+    pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+  }
+  return pool;
+}
 
-  fs.mkdirSync(DB_DIR, { recursive: true });
-
-  db = new Database(DB_PATH);
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
-
-  migrate(db);
-
-  return db;
+export async function initDb() {
+  await migrate(getPool());
 }

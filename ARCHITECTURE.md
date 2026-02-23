@@ -2,7 +2,7 @@
 
 Real-time meeting assistant that transcribes audio, generates specs/stories/diagrams via LLM, and streams results to all participants.
 
-**Stack:** Next.js 16, React 19, Socket.IO 4, SQLite (better-sqlite3), Deepgram (speech-to-text), multi-provider LLM (Anthropic/OpenAI/Groq), Tailwind CSS 4, TypeScript strict.
+**Stack:** Next.js 16, React 19, Socket.IO 4, PostgreSQL (pg), Deepgram (speech-to-text), multi-provider LLM (Anthropic/OpenAI/Groq), Tailwind CSS 4, TypeScript strict.
 
 ## Directory structure
 
@@ -23,8 +23,8 @@ server/
 │   ├── openai-compatible.ts     Generic OpenAI-compatible provider (Groq)
 │   └── claude-code.ts           Claude Code CLI provider (uses Max subscription via `claude -p`)
 ├── db/
-│   ├── connection.ts            SQLite singleton, WAL mode, foreign keys on
-│   ├── schema.ts                Table creation and migrations
+│   ├── connection.ts            PostgreSQL pool singleton, BIGINT type parser
+│   ├── schema.ts                Table creation and migrations (async)
 │   └── repositories/            CRUD per entity: projects, meetings, transcripts, artefacts, documents
 └── ws.d.ts
 
@@ -81,7 +81,7 @@ Diagram generation runs sequentially after text → planDiagrams() → per-type 
 All artefacts persisted via upsertArtefact() + broadcast to room
 ```
 
-## Database schema (SQLite)
+## Database schema (PostgreSQL)
 
 ```
 projects (id, name, created_at)

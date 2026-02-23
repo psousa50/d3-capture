@@ -46,7 +46,7 @@ export class TranscriptAccumulator {
     if (!chunk.isFinal) return;
 
     this.chunks.push(chunk);
-    insertChunk(this.meetingId, chunk.text, chunk.speaker ?? null, chunk.timestamp);
+    insertChunk(this.meetingId, chunk.text, chunk.speaker ?? null, chunk.timestamp).catch(console.error);
 
     if (chunk.speaker) {
       this.lastChunkTime.set(chunk.speaker, Date.now());

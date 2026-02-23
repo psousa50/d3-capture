@@ -1,4 +1,4 @@
-import { getDb } from "../connection";
+import { getPool } from "../connection";
 
 export interface TranscriptChunkRow {
   id: number;
@@ -8,26 +8,29 @@ export interface TranscriptChunkRow {
   timestamp: number;
 }
 
-export function insertChunk(meetingId: string, text: string, speaker: string | null, timestamp: number) {
-  const db = getDb();
-  db.prepare(
-    "INSERT INTO transcript_chunks (meeting_id, text, speaker, timestamp) VALUES (?, ?, ?, ?)"
-  ).run(meetingId, text, speaker, timestamp);
+export async function insertChunk(meetingId: string, text: string, speaker: string | null, timestamp: number): Promise<void> {
+  const pool = getPool();
+  await pool.query(
+    "INSERT INTO transcript_chunks (meeting_id, text, speaker, timestamp) VALUES ($1, $2, $3, $4)",
+    [meetingId, text, speaker, timestamp]
+  );
 }
 
-export function getChunks(meetingId: string): TranscriptChunkRow[] {
-  const db = getDb();
-  return db
-    .prepare("SELECT * FROM transcript_chunks WHERE meeting_id = ? ORDER BY timestamp ASC")
-    .all(meetingId) as TranscriptChunkRow[];
+export async function getChunks(meetingId: string): Promise<TranscriptChunkRow[]> {
+  const pool = getPool();
+  const { rows } = await pool.query(
+    "SELECT * FROM transcript_chunks WHERE meeting_id = $1 ORDER BY timestamp ASC",
+    [meetingId]
+  );
+  return rows;
 }
 
-export function updateChunk(id: number, text: string) {
-  const db = getDb();
-  db.prepare("UPDATE transcript_chunks SET text = ? WHERE id = ?").run(text, id);
+export async function updateChunk(id: number, text: string): Promise<void> {
+  const pool = getPool();
+  await pool.query("UPDATE transcript_chunks SET text = $1 WHERE id = $2", [text, id]);
 }
 
-export function deleteChunk(id: number) {
-  const db = getDb();
-  db.prepare("DELETE FROM transcript_chunks WHERE id = ?").run(id);
+export async function deleteChunk(id: number): Promise<void> {
+  const pool = getPool();
+  await pool.query("DELETE FROM transcript_chunks WHERE id = $1", [id]);
 }

@@ -1,54 +1,57 @@
-import type Database from "better-sqlite3";
+import type { Pool } from "pg";
 
-export function migrate(db: Database.Database) {
-  db.exec(`
+export async function migrate(pool: Pool) {
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS projects (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
-      created_at INTEGER NOT NULL
-    );
+      created_at BIGINT NOT NULL
+    )
+  `);
 
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS meetings (
       id TEXT PRIMARY KEY,
       project_id TEXT NOT NULL REFERENCES projects(id),
-      started_at INTEGER NOT NULL,
-      ended_at INTEGER,
+      started_at BIGINT NOT NULL,
+      ended_at BIGINT,
       status TEXT NOT NULL DEFAULT 'active',
       pending_transcript TEXT
-    );
+    )
+  `);
 
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS transcript_chunks (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id BIGSERIAL PRIMARY KEY,
       meeting_id TEXT NOT NULL REFERENCES meetings(id),
       text TEXT NOT NULL,
       speaker TEXT,
-      timestamp INTEGER NOT NULL
-    );
+      timestamp BIGINT NOT NULL
+    )
+  `);
 
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS artefacts (
       id TEXT PRIMARY KEY,
       project_id TEXT NOT NULL REFERENCES projects(id),
       type TEXT NOT NULL,
       content TEXT NOT NULL,
-      updated_at INTEGER NOT NULL,
+      updated_at BIGINT NOT NULL,
       UNIQUE(project_id, type)
-    );
+    )
+  `);
 
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS documents (
       id TEXT PRIMARY KEY,
       meeting_id TEXT NOT NULL REFERENCES meetings(id),
       content TEXT NOT NULL,
-      created_at INTEGER NOT NULL
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_meetings_project ON meetings(project_id);
-    CREATE INDEX IF NOT EXISTS idx_transcript_meeting ON transcript_chunks(meeting_id);
-    CREATE INDEX IF NOT EXISTS idx_artefacts_project ON artefacts(project_id);
-    CREATE INDEX IF NOT EXISTS idx_documents_meeting ON documents(meeting_id);
+      created_at BIGINT NOT NULL
+    )
   `);
 
-  const columns = db.pragma("table_info(meetings)") as { name: string }[];
-  if (!columns.some((c) => c.name === "pending_transcript")) {
-    db.exec("ALTER TABLE meetings ADD COLUMN pending_transcript TEXT");
-  }
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_meetings_project ON meetings(project_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_transcript_meeting ON transcript_chunks(meeting_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_artefacts_project ON artefacts(project_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_documents_meeting ON documents(meeting_id)`);
 }

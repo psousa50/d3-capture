@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { getDb } from "../connection";
+import { getPool } from "../connection";
 
 export interface Meeting {
   id: string;
@@ -9,41 +9,45 @@ export interface Meeting {
   status: "active" | "completed";
 }
 
-export function createMeeting(projectId: string): Meeting {
-  const db = getDb();
+export async function createMeeting(projectId: string): Promise<Meeting> {
+  const pool = getPool();
   const id = randomUUID();
   const started_at = Date.now();
 
-  db.prepare(
-    "INSERT INTO meetings (id, project_id, started_at, status) VALUES (?, ?, ?, 'active')"
-  ).run(id, projectId, started_at);
+  await pool.query(
+    "INSERT INTO meetings (id, project_id, started_at, status) VALUES ($1, $2, $3, 'active')",
+    [id, projectId, started_at]
+  );
 
   return { id, project_id: projectId, started_at, ended_at: null, status: "active" };
 }
 
-export function endMeeting(id: string) {
-  const db = getDb();
-  db.prepare("UPDATE meetings SET ended_at = ?, status = 'completed' WHERE id = ?").run(
+export async function endMeeting(id: string): Promise<void> {
+  const pool = getPool();
+  await pool.query("UPDATE meetings SET ended_at = $1, status = 'completed' WHERE id = $2", [
     Date.now(),
-    id
+    id,
+  ]);
+}
+
+export async function getMeeting(id: string): Promise<Meeting | undefined> {
+  const pool = getPool();
+  const { rows } = await pool.query("SELECT * FROM meetings WHERE id = $1", [id]);
+  return rows[0];
+}
+
+export async function listMeetings(projectId: string): Promise<Meeting[]> {
+  const pool = getPool();
+  const { rows } = await pool.query(
+    "SELECT * FROM meetings WHERE project_id = $1 ORDER BY started_at DESC",
+    [projectId]
   );
+  return rows;
 }
 
-export function getMeeting(id: string): Meeting | undefined {
-  const db = getDb();
-  return db.prepare("SELECT * FROM meetings WHERE id = ?").get(id) as Meeting | undefined;
-}
-
-export function listMeetings(projectId: string): Meeting[] {
-  const db = getDb();
-  return db
-    .prepare("SELECT * FROM meetings WHERE project_id = ? ORDER BY started_at DESC")
-    .all(projectId) as Meeting[];
-}
-
-export function deleteMeeting(id: string) {
-  const db = getDb();
-  db.prepare("DELETE FROM transcript_chunks WHERE meeting_id = ?").run(id);
-  db.prepare("DELETE FROM documents WHERE meeting_id = ?").run(id);
-  db.prepare("DELETE FROM meetings WHERE id = ?").run(id);
+export async function deleteMeeting(id: string): Promise<void> {
+  const pool = getPool();
+  await pool.query("DELETE FROM transcript_chunks WHERE meeting_id = $1", [id]);
+  await pool.query("DELETE FROM documents WHERE meeting_id = $1", [id]);
+  await pool.query("DELETE FROM meetings WHERE id = $1", [id]);
 }

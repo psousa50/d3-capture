@@ -6,11 +6,11 @@ export async function DELETE(
   { params }: { params: Promise<{ projectId: string; meetingId: string }> }
 ) {
   const { meetingId } = await params;
-  const meeting = getMeeting(meetingId);
+  const meeting = await getMeeting(meetingId);
   if (!meeting) {
     return NextResponse.json({ error: "Meeting not found" }, { status: 404 });
   }
 
-  deleteMeeting(meetingId);
+  await deleteMeeting(meetingId);
   return new NextResponse(null, { status: 204 });
 }

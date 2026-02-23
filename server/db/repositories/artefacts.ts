@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { getDb } from "../connection";
+import { getPool } from "../connection";
 
 export interface ArtefactRow {
   id: string;
@@ -9,37 +9,39 @@ export interface ArtefactRow {
   updated_at: number;
 }
 
-export function upsertArtefact(projectId: string, type: string, content: string) {
-  const db = getDb();
+export async function upsertArtefact(projectId: string, type: string, content: string): Promise<void> {
+  const pool = getPool();
   const now = Date.now();
 
-  db.prepare(`
-    INSERT INTO artefacts (id, project_id, type, content, updated_at)
-    VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT(project_id, type) DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at
-  `).run(randomUUID(), projectId, type, content, now);
+  await pool.query(
+    `INSERT INTO artefacts (id, project_id, type, content, updated_at)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT(project_id, type) DO UPDATE SET content = EXCLUDED.content, updated_at = EXCLUDED.updated_at`,
+    [randomUUID(), projectId, type, content, now]
+  );
 }
 
-export function getArtefacts(projectId: string): ArtefactRow[] {
-  const db = getDb();
-  return db
-    .prepare("SELECT * FROM artefacts WHERE project_id = ?")
-    .all(projectId) as ArtefactRow[];
+export async function getArtefacts(projectId: string): Promise<ArtefactRow[]> {
+  const pool = getPool();
+  const { rows } = await pool.query("SELECT * FROM artefacts WHERE project_id = $1", [projectId]);
+  return rows;
 }
 
-export function deleteDiagramArtefacts(projectId: string) {
-  const db = getDb();
-  db.prepare("DELETE FROM artefacts WHERE project_id = ? AND type LIKE 'diagram:%'").run(projectId);
+export async function deleteDiagramArtefacts(projectId: string): Promise<void> {
+  const pool = getPool();
+  await pool.query("DELETE FROM artefacts WHERE project_id = $1 AND type LIKE 'diagram:%'", [projectId]);
 }
 
-export function deleteArtefact(projectId: string, type: string) {
-  const db = getDb();
-  db.prepare("DELETE FROM artefacts WHERE project_id = ? AND type = ?").run(projectId, type);
+export async function deleteArtefact(projectId: string, type: string): Promise<void> {
+  const pool = getPool();
+  await pool.query("DELETE FROM artefacts WHERE project_id = $1 AND type = $2", [projectId, type]);
 }
 
-export function getArtefact(projectId: string, type: string): ArtefactRow | undefined {
-  const db = getDb();
-  return db
-    .prepare("SELECT * FROM artefacts WHERE project_id = ? AND type = ?")
-    .get(projectId, type) as ArtefactRow | undefined;
+export async function getArtefact(projectId: string, type: string): Promise<ArtefactRow | undefined> {
+  const pool = getPool();
+  const { rows } = await pool.query(
+    "SELECT * FROM artefacts WHERE project_id = $1 AND type = $2",
+    [projectId, type]
+  );
+  return rows[0];
 }

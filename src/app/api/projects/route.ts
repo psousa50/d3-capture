@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { listProjects, createProject } from "../../../../server/db/repositories/projects";
 
 export async function GET() {
-  return NextResponse.json(listProjects());
+  return NextResponse.json(await listProjects());
 }
 
 export async function POST(request: Request) {
@@ -10,5 +10,5 @@ export async function POST(request: Request) {
   if (!name || typeof name !== "string") {
     return NextResponse.json({ error: "name is required" }, { status: 400 });
   }
-  return NextResponse.json(createProject(name));
+  return NextResponse.json(await createProject(name));
 }

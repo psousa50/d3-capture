@@ -9,6 +9,7 @@ import { Server } from "socket.io";
 import { MeetingManager } from "./meeting-manager";
 import { getMeeting } from "./db/repositories/meetings";
 import { getProject } from "./db/repositories/projects";
+import { initDb } from "./db/connection";
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = "localhost";
@@ -22,7 +23,7 @@ const useHttps = existsSync(certPath) && existsSync(keyPath);
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
-app.prepare().then(() => {
+initDb().then(() => app.prepare()).then(() => {
   const requestHandler = (req: any, res: any) => {
     const parsedUrl = parse(req.url!, true);
     handle(req, res, parsedUrl);
@@ -51,7 +52,7 @@ app.prepare().then(() => {
 
   const meetingManager = new MeetingManager(io);
 
-  io.on("connection", (socket) => {
+  io.on("connection", async (socket) => {
     const { meetingId, role } = socket.handshake.query as Record<string, string>;
 
     if (!meetingId) {
@@ -60,14 +61,14 @@ app.prepare().then(() => {
       return;
     }
 
-    const meeting = getMeeting(meetingId);
+    const meeting = await getMeeting(meetingId);
     if (!meeting) {
       socket.emit("error", "Meeting not found");
       socket.disconnect();
       return;
     }
 
-    const project = getProject(meeting.project_id);
+    const project = await getProject(meeting.project_id);
     if (!project) {
       socket.emit("error", "Project not found");
       socket.disconnect();

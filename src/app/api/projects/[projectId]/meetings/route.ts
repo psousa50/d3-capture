@@ -4,15 +4,15 @@ import { getProject } from "../../../../../../server/db/repositories/projects";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = await params;
-  return NextResponse.json(listMeetings(projectId));
+  return NextResponse.json(await listMeetings(projectId));
 }
 
 export async function POST(_request: Request, { params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = await params;
-  const project = getProject(projectId);
+  const project = await getProject(projectId);
   if (!project) {
     return NextResponse.json({ error: "Project not found" }, { status: 404 });
   }
 
-  return NextResponse.json(createMeeting(projectId));
+  return NextResponse.json(await createMeeting(projectId));
 }

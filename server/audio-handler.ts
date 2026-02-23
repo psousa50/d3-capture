@@ -93,7 +93,7 @@ export class AudioHandler {
   }
 
   async handleTranscriptImport(text: string) {
-    const doc = insertDocument(this.meetingId, text);
+    const doc = await insertDocument(this.meetingId, text);
     this.emit("document-added", { id: doc.id, content: doc.content, createdAt: doc.created_at });
 
     const now = Date.now();

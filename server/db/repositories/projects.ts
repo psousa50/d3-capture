@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { getDb } from "../connection";
+import { getPool } from "../connection";
 
 export interface Project {
   id: string;
@@ -7,42 +7,38 @@ export interface Project {
   created_at: number;
 }
 
-export function createProject(name: string): Project {
-  const db = getDb();
+export async function createProject(name: string): Promise<Project> {
+  const pool = getPool();
   const id = randomUUID();
   const created_at = Date.now();
 
-  db.prepare("INSERT INTO projects (id, name, created_at) VALUES (?, ?, ?)").run(
-    id,
-    name,
-    created_at
-  );
+  await pool.query("INSERT INTO projects (id, name, created_at) VALUES ($1, $2, $3)", [id, name, created_at]);
 
   return { id, name, created_at };
 }
 
-export function listProjects(): Project[] {
-  const db = getDb();
-  return db.prepare("SELECT * FROM projects ORDER BY created_at DESC").all() as Project[];
+export async function listProjects(): Promise<Project[]> {
+  const pool = getPool();
+  const { rows } = await pool.query("SELECT * FROM projects ORDER BY created_at DESC");
+  return rows;
 }
 
-export function getProject(id: string): Project | undefined {
-  const db = getDb();
-  return db.prepare("SELECT * FROM projects WHERE id = ?").get(id) as Project | undefined;
+export async function getProject(id: string): Promise<Project | undefined> {
+  const pool = getPool();
+  const { rows } = await pool.query("SELECT * FROM projects WHERE id = $1", [id]);
+  return rows[0];
 }
 
-export function deleteProject(id: string) {
-  const db = getDb();
-  const meetingIds = db
-    .prepare("SELECT id FROM meetings WHERE project_id = ?")
-    .all(id) as { id: string }[];
+export async function deleteProject(id: string): Promise<void> {
+  const pool = getPool();
+  const { rows: meetings } = await pool.query("SELECT id FROM meetings WHERE project_id = $1", [id]);
 
-  for (const { id: mid } of meetingIds) {
-    db.prepare("DELETE FROM transcript_chunks WHERE meeting_id = ?").run(mid);
-    db.prepare("DELETE FROM documents WHERE meeting_id = ?").run(mid);
+  for (const { id: mid } of meetings) {
+    await pool.query("DELETE FROM transcript_chunks WHERE meeting_id = $1", [mid]);
+    await pool.query("DELETE FROM documents WHERE meeting_id = $1", [mid]);
   }
 
-  db.prepare("DELETE FROM meetings WHERE project_id = ?").run(id);
-  db.prepare("DELETE FROM artefacts WHERE project_id = ?").run(id);
-  db.prepare("DELETE FROM projects WHERE id = ?").run(id);
+  await pool.query("DELETE FROM meetings WHERE project_id = $1", [id]);
+  await pool.query("DELETE FROM artefacts WHERE project_id = $1", [id]);
+  await pool.query("DELETE FROM projects WHERE id = $1", [id]);
 }

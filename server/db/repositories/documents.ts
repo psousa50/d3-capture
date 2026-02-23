@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { getDb } from "../connection";
+import { getPool } from "../connection";
 
 export interface DocumentRow {
   id: string;
@@ -8,31 +8,34 @@ export interface DocumentRow {
   created_at: number;
 }
 
-export function insertDocument(meetingId: string, content: string): DocumentRow {
-  const db = getDb();
+export async function insertDocument(meetingId: string, content: string): Promise<DocumentRow> {
+  const pool = getPool();
   const id = randomUUID();
   const created_at = Date.now();
 
-  db.prepare(
-    "INSERT INTO documents (id, meeting_id, content, created_at) VALUES (?, ?, ?, ?)"
-  ).run(id, meetingId, content, created_at);
+  await pool.query(
+    "INSERT INTO documents (id, meeting_id, content, created_at) VALUES ($1, $2, $3, $4)",
+    [id, meetingId, content, created_at]
+  );
 
   return { id, meeting_id: meetingId, content, created_at };
 }
 
-export function getDocuments(meetingId: string): DocumentRow[] {
-  const db = getDb();
-  return db
-    .prepare("SELECT * FROM documents WHERE meeting_id = ? ORDER BY created_at ASC")
-    .all(meetingId) as DocumentRow[];
+export async function getDocuments(meetingId: string): Promise<DocumentRow[]> {
+  const pool = getPool();
+  const { rows } = await pool.query(
+    "SELECT * FROM documents WHERE meeting_id = $1 ORDER BY created_at ASC",
+    [meetingId]
+  );
+  return rows;
 }
 
-export function deleteDocument(id: string) {
-  const db = getDb();
-  db.prepare("DELETE FROM documents WHERE id = ?").run(id);
+export async function deleteDocument(id: string): Promise<void> {
+  const pool = getPool();
+  await pool.query("DELETE FROM documents WHERE id = $1", [id]);
 }
 
-export function deleteDocumentsByMeeting(meetingId: string) {
-  const db = getDb();
-  db.prepare("DELETE FROM documents WHERE meeting_id = ?").run(meetingId);
+export async function deleteDocumentsByMeeting(meetingId: string): Promise<void> {
+  const pool = getPool();
+  await pool.query("DELETE FROM documents WHERE meeting_id = $1", [meetingId]);
 }

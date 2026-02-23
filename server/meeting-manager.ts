@@ -39,7 +39,7 @@ export class MeetingManager {
     socket.data.meetingId = meetingId;
     socket.data.role = "producer";
 
-    this.sendSnapshot(socket, meetingId, projectId);
+    this.sendSnapshot(socket, meetingId, projectId).catch(console.error);
     this.broadcastPresence(active);
 
     socket.on("start-recording", () => {
@@ -60,15 +60,15 @@ export class MeetingManager {
       active.handler.handleTextInput(text);
     });
 
-    socket.on("edit-transcript", (data: { id: number; text: string }) => {
+    socket.on("edit-transcript", async (data: { id: number; text: string }) => {
       if (!data?.id || typeof data.text !== "string") return;
-      updateChunk(data.id, data.text.trim());
+      await updateChunk(data.id, data.text.trim());
       this.io.to(room).emit("transcript-edited", { id: data.id, text: data.text.trim() });
     });
 
-    socket.on("delete-transcript", (data: { id: number }) => {
+    socket.on("delete-transcript", async (data: { id: number }) => {
       if (!data?.id) return;
-      deleteChunk(data.id);
+      await deleteChunk(data.id);
       this.io.to(room).emit("transcript-deleted", { id: data.id });
     });
 
@@ -88,9 +88,9 @@ export class MeetingManager {
       active.handler.handleTranscriptImport(text.trim());
     });
 
-    socket.on("delete-document", (data: { id: string }) => {
+    socket.on("delete-document", async (data: { id: string }) => {
       if (!data?.id) return;
-      deleteDocument(data.id);
+      await deleteDocument(data.id);
       this.io.to(room).emit("document-deleted", { id: data.id });
     });
 
@@ -109,7 +109,7 @@ export class MeetingManager {
       active.viewers.add(socket.id);
     }
 
-    this.sendSnapshot(socket, meetingId, projectId);
+    this.sendSnapshot(socket, meetingId, projectId).catch(console.error);
     if (active) this.broadcastPresence(active);
 
     console.log(`[meeting:${meetingId}] Viewer joined: ${socket.id}`);
@@ -132,7 +132,7 @@ export class MeetingManager {
       if (active.producers.size === 0) {
         console.log(`[meeting:${meetingId}] No producers left, starting ${DISCONNECT_GRACE_MS}ms grace period`);
         active.disconnectTimer = setTimeout(() => {
-          this.shutdownMeeting(meetingId);
+          this.shutdownMeeting(meetingId).catch(console.error);
         }, DISCONNECT_GRACE_MS);
       }
     } else {
@@ -167,10 +167,10 @@ export class MeetingManager {
     return active;
   }
 
-  private sendSnapshot(socket: Socket, meetingId: string, projectId: string) {
-    const chunks = getChunks(meetingId);
-    const artefactRows = getArtefacts(projectId);
-    const docs = getDocuments(meetingId);
+  private async sendSnapshot(socket: Socket, meetingId: string, projectId: string) {
+    const chunks = await getChunks(meetingId);
+    const artefactRows = await getArtefacts(projectId);
+    const docs = await getDocuments(meetingId);
 
     const transcript = chunks.map((c) => ({
       id: c.id,
@@ -193,13 +193,13 @@ export class MeetingManager {
     socket.emit("meeting-state", { transcript, artefacts, documents });
   }
 
-  private shutdownMeeting(meetingId: string) {
+  private async shutdownMeeting(meetingId: string) {
     const active = this.meetings.get(meetingId);
     if (!active) return;
 
     console.log(`[meeting:${meetingId}] Shutting down`);
     active.handler.stop();
-    endMeeting(meetingId);
+    await endMeeting(meetingId);
     this.meetings.delete(meetingId);
   }
 
