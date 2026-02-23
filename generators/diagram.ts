@@ -29,15 +29,20 @@ Common Mermaid syntax patterns:
     Attributes MUST use curly brace blocks, NOT the colon syntax:
     CORRECT: TABLE { string name PK \n string email }
     WRONG: TABLE : string name PK
-  C4Context for C4 system context — EXACT syntax required:
-    C4Context
-      title My System
-      Person(u, "User", "Description")
-      System(s, "My System", "Description")
-      System_Ext(e, "External", "Description")
-      Rel(u, s, "Uses")
-      Rel(s, e, "Calls")
-    FORBIDDEN: person() container() lowercase keywords, arrow syntax (->>, -->)
+  C4Context for C4 diagrams — Mermaid C4 syntax is DIFFERENT from PlantUML C4:
+    WRONG (PlantUML — do not use):
+      person(u, "User")
+      container(s, "System", "Tech")
+      u ->> s : uses
+    CORRECT (Mermaid — always use this):
+      C4Context
+        title My System
+        Person(u, "User", "Description")
+        System(s, "My System", "Technology")
+        System_Ext(e, "External System", "Description")
+        Rel(u, s, "Uses")
+        Rel(s, e, "Calls")
+    Rules: PascalCase only (Person, System, Container, Rel). No arrows (->>). No lowercase keywords.
   stateDiagram-v2 for state machines
   classDiagram for class diagrams`;
 
