@@ -45,7 +45,7 @@ export class MeetingSocket {
       const token = document.cookie
         .split("; ")
         .find((c) => c.startsWith("auth-token="))
-        ?.split("=")[1] ?? "";
+        ?.split("=").slice(1).join("=") ?? "";
 
       this.socket = io({
         query: { meetingId, role },
