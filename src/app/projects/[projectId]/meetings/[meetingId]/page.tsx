@@ -13,6 +13,7 @@ import { TranscriptImportModal } from "../../../../../components/TranscriptImpor
 export default function MeetingPage() {
   const { projectId, meetingId } = useParams<{ projectId: string; meetingId: string }>();
   const [importOpen, setImportOpen] = useState(false);
+  const [transcriptCollapsed, setTranscriptCollapsed] = useState(false);
   const {
     status, transcript, artefacts, documents, participants, error, elapsed,
     startMeeting, startRecording, stopRecording, stopMeeting,
@@ -26,49 +27,73 @@ export default function MeetingPage() {
     return () => stopMeeting();
   }, [meetingId, startMeeting, stopMeeting]);
 
+  const isActive = status === "connected" || status === "recording";
+
   return (
-    <div className="flex h-screen flex-col">
-      <header className="flex items-center justify-between border-b border-zinc-800 px-4 py-2">
-        <div className="flex items-center gap-3">
+    <div className="flex h-screen flex-col bg-zinc-950">
+      <header className="flex items-center justify-between border-b border-zinc-800/50 px-4 py-2.5">
+        <div className="flex items-center gap-2 text-sm">
           <Link
             href={`/projects/${projectId}`}
-            className="text-sm text-zinc-500 hover:text-zinc-300"
+            className="flex items-center gap-1.5 text-zinc-500 transition-colors hover:text-zinc-300"
           >
-            Back to project
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+            Project
           </Link>
-          <span className="text-zinc-700">|</span>
-          <h1 className="text-sm font-medium text-zinc-300">Meeting</h1>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-800">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+          <span className="font-medium text-zinc-300">Meeting</span>
         </div>
+
         <div className="flex items-center gap-4">
           <PresenceIndicator participants={participants} />
-          {(status === "connected" || status === "recording") && (
+
+          {isActive && (
             <button
               onClick={() => setImportOpen(true)}
-              className="rounded border border-zinc-700 px-3 py-1 text-xs text-zinc-400 transition-colors hover:border-zinc-500 hover:text-zinc-200"
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-zinc-500 transition-all hover:bg-zinc-800/50 hover:text-zinc-300"
             >
-              Import Transcript
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+              Import
             </button>
           )}
+
           {status === "recording" && (
-            <div className="flex items-center gap-2 text-sm text-zinc-400">
-              <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-red-500" />
-              Recording
+            <div className="flex items-center gap-2 rounded-full bg-red-500/10 px-3 py-1 ring-1 ring-red-500/20">
+              <span className="inline-block h-2 w-2 animate-recording-pulse rounded-full bg-red-500" />
+              <span className="text-xs font-medium text-red-400">REC</span>
             </div>
           )}
         </div>
       </header>
-      <div className="flex flex-1 overflow-hidden">
-        <div className="w-1/4 border-r border-zinc-800">
-          <TranscriptPanel
-            entries={transcript}
-            onEdit={editTranscript}
-            onDelete={deleteTranscript}
+
+      <div className="relative flex flex-1 overflow-hidden">
+        <TranscriptPanel
+          entries={transcript}
+          collapsed={transcriptCollapsed}
+          onToggle={() => setTranscriptCollapsed((v) => !v)}
+          onEdit={editTranscript}
+          onDelete={deleteTranscript}
+        />
+
+        <div className={`flex-1 transition-all duration-300 ${transcriptCollapsed ? "ml-0" : ""}`}>
+          <ArtefactTabs
+            artefacts={artefacts}
+            documents={documents}
+            onDeleteDocument={deleteDocument}
+            onRegenerateDiagrams={regenerateDiagrams}
+            onRegenerateDiagram={regenerateDiagram}
           />
         </div>
-        <div className="flex-1">
-          <ArtefactTabs artefacts={artefacts} documents={documents} onDeleteDocument={deleteDocument} onRegenerateDiagrams={regenerateDiagrams} onRegenerateDiagram={regenerateDiagram} />
-        </div>
       </div>
+
       <MeetingControls
         status={status}
         elapsed={elapsed}
@@ -78,6 +103,7 @@ export default function MeetingPage() {
         onStop={stopMeeting}
         onSendText={sendText}
       />
+
       <TranscriptImportModal
         open={importOpen}
         onClose={() => setImportOpen(false)}

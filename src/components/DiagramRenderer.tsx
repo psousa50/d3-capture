@@ -19,35 +19,35 @@ export function DiagramRenderer({ content }: { content: string }) {
         theme: "base",
         themeVariables: {
           darkMode: true,
-          background: "#18181b",
-          primaryColor: "#27272a",
+          background: "#0c0c0e",
+          primaryColor: "#1e1e24",
           primaryTextColor: "#d4d4d8",
-          primaryBorderColor: "#3f3f46",
-          secondaryColor: "#27272a",
+          primaryBorderColor: "#2e2e36",
+          secondaryColor: "#1e1e24",
           secondaryTextColor: "#d4d4d8",
-          secondaryBorderColor: "#3f3f46",
-          tertiaryColor: "#27272a",
+          secondaryBorderColor: "#2e2e36",
+          tertiaryColor: "#1e1e24",
           tertiaryTextColor: "#d4d4d8",
-          tertiaryBorderColor: "#3f3f46",
-          lineColor: "#52525b",
+          tertiaryBorderColor: "#2e2e36",
+          lineColor: "#4b4b57",
           textColor: "#d4d4d8",
-          mainBkg: "#27272a",
-          nodeBorder: "#3f3f46",
+          mainBkg: "#1e1e24",
+          nodeBorder: "#3f3f50",
           nodeTextColor: "#d4d4d8",
-          clusterBkg: "#18181b",
-          clusterBorder: "#3f3f46",
+          clusterBkg: "#0c0c0e",
+          clusterBorder: "#2e2e36",
           titleColor: "#d4d4d8",
-          edgeLabelBackground: "#18181b",
-          actorBkg: "#27272a",
-          actorBorder: "#3f3f46",
+          edgeLabelBackground: "#0c0c0e",
+          actorBkg: "#1e1e24",
+          actorBorder: "#3f3f50",
           actorTextColor: "#d4d4d8",
-          signalColor: "#52525b",
+          signalColor: "#4b4b57",
           signalTextColor: "#d4d4d8",
-          labelBoxBkgColor: "#27272a",
-          labelBoxBorderColor: "#3f3f46",
+          labelBoxBkgColor: "#1e1e24",
+          labelBoxBorderColor: "#2e2e36",
           labelTextColor: "#d4d4d8",
-          noteBkgColor: "#1e293b",
-          noteBorderColor: "#334155",
+          noteBkgColor: "#1a1a2e",
+          noteBorderColor: "#2d2d4a",
           noteTextColor: "#d4d4d8",
         },
       });
@@ -72,22 +72,31 @@ export function DiagramRenderer({ content }: { content: string }) {
 
   if (!content) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-zinc-600">
-        No diagram generated yet
+      <div className="flex h-full flex-col items-center justify-center text-centre">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mb-2 text-zinc-700">
+          <circle cx="12" cy="12" r="10" /><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" /><path d="M2 12h20" />
+        </svg>
+        <p className="text-xs text-zinc-600">No diagram generated yet</p>
       </div>
     );
   }
 
   return (
-    <div className="h-full overflow-y-auto p-4">
-      <div ref={containerRef} className={error ? "hidden" : ""} />
+    <div className="h-full overflow-y-auto p-6">
+      <div ref={containerRef} className={`flex justify-center ${error ? "hidden" : ""}`} />
       {error && (
-        <>
-          <p className="mb-2 text-sm text-amber-400">{error}</p>
-          <pre className="rounded bg-zinc-900 p-3 text-xs text-zinc-400 overflow-auto">
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-sm text-amber-400">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+              <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+            {error}
+          </div>
+          <pre className="rounded-lg bg-zinc-900 p-4 text-xs text-zinc-500 overflow-auto border border-zinc-800/50">
             {content}
           </pre>
-        </>
+        </div>
       )}
     </div>
   );
