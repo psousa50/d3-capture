@@ -29,7 +29,13 @@ Common Mermaid syntax patterns:
     Attributes MUST use curly brace blocks, NOT the colon syntax:
     CORRECT: TABLE { string name PK \n string email }
     WRONG: TABLE : string name PK
-  C4Context / C4Container for C4 diagrams
+  C4Context for C4 system context diagrams — use EXACTLY this syntax:
+    C4Context
+      Person(userAlias, "Label", "Description")
+      System(sysAlias, "Label", "Description")
+      System_Ext(extAlias, "Label", "Description")
+      Rel(userAlias, sysAlias, "Uses")
+    Rules: Person/System/Rel must be capitalised. NO arrow syntax (-->>, ->>). NO lowercase person()/container().
   stateDiagram-v2 for state machines
   classDiagram for class diagrams`;
 
