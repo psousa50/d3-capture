@@ -53,6 +53,7 @@ export function DiagramRenderer({ content }: { content: string }) {
       });
 
       const cleaned = content.replace(/^```(?:mermaid)?\n?/gm, "").replace(/```$/gm, "").trim();
+      await mermaid.parse(cleaned);
       const id = `diagram-${Date.now()}`;
       const { svg } = await mermaid.render(id, cleaned);
       if (!cancelled && containerRef.current) {
