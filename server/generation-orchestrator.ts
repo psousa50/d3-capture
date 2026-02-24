@@ -184,17 +184,11 @@ export class GenerationOrchestrator {
       console.log(`[orchestrator] Regenerating ${diagramKey} (manual)`);
 
       const currentContent = this.contextManager.getArtefactStates()[diagramKey];
-      const context = this.contextManager.buildPromptContext("diagram");
-      if (!context.trim()) {
-        console.warn("[diagram] Empty context, skipping");
-        return;
-      }
-
       const provider = getDiagramProvider();
       const plan: DiagramPlan = { type: diagramType, focus: `update ${diagramType}`, renderer };
 
       await withTimeout(
-        this.runSingleDiagram(provider, context, plan, currentContent),
+        this.runSingleDiagram(provider, plan, currentContent),
         GENERATION_TIMEOUT_MS,
         diagramKey,
       );
@@ -273,8 +267,8 @@ export class GenerationOrchestrator {
   }
 
   private async runDiagramGeneration(onlyTypes?: string[]) {
-    const context = this.contextManager.buildPromptContext("diagram");
-    if (!context.trim()) {
+    const baseContext = this.contextManager.buildPromptContext("diagram");
+    if (!baseContext.trim()) {
       console.warn("[diagram] Empty context, skipping diagram generation");
       return;
     }
@@ -306,7 +300,7 @@ export class GenerationOrchestrator {
         }));
       } else {
         console.log("[diagram] Planning diagrams...");
-        plan = await planDiagrams(provider, context);
+        plan = await planDiagrams(provider, baseContext);
         console.log("[diagram] Plan:", plan.map((p) => `${p.type} (${p.renderer})`).join(", "));
       }
 
@@ -315,7 +309,7 @@ export class GenerationOrchestrator {
         const currentContent = artefactStates[diagramKey];
         console.log(`[diagram] Generating: ${diagramKey}`);
         return withTimeout(
-          this.runSingleDiagram(provider, context, entry, currentContent),
+          this.runSingleDiagram(provider, entry, currentContent),
           GENERATION_TIMEOUT_MS,
           diagramKey,
         ).then(
@@ -339,11 +333,11 @@ export class GenerationOrchestrator {
 
   private async runSingleDiagram(
     provider: Parameters<typeof generateDiagram>[0],
-    context: string,
     entry: DiagramPlan,
     currentContent?: string,
   ) {
     const artefactType = `diagram:${entry.type}`;
+    const context = this.contextManager.buildPromptContext("diagram", artefactType);
     let fullContent = "";
 
     this.emit("artefact-start", { artefactType, renderer: entry.renderer });

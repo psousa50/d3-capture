@@ -77,7 +77,7 @@ export class ContextManager {
     };
   }
 
-  buildPromptContext(generatorType: string): string {
+  buildPromptContext(generatorType: string, excludeKey?: string): string {
     const ctx = this.getContext();
     const parts: string[] = [];
 
@@ -97,19 +97,12 @@ export class ContextManager {
 
     if (generatorType === "diagram") {
       const diagramEntries = Object.entries(ctx.artefactStates)
-        .filter(([key]) => key.startsWith("diagram:"));
+        .filter(([key]) => key.startsWith("diagram:") && key !== excludeKey);
       if (diagramEntries.length > 0) {
         const diagramContext = diagramEntries
           .map(([key, content]) => `### ${key}\n${content}`)
           .join("\n\n");
         parts.push(`## Current diagrams (update based on the conversation)\n${diagramContext}`);
-      }
-    } else {
-      const currentArtefact = ctx.artefactStates[generatorType];
-      if (currentArtefact) {
-        parts.push(
-          `## Current ${generatorType} (update this based on the conversation)\n${currentArtefact}`
-        );
       }
     }
 
