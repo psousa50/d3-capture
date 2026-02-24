@@ -8,12 +8,13 @@ export interface TranscriptChunkRow {
   timestamp: number;
 }
 
-export async function insertChunk(meetingId: string, text: string, speaker: string | null, timestamp: number): Promise<void> {
+export async function insertChunk(meetingId: string, text: string, speaker: string | null, timestamp: number): Promise<TranscriptChunkRow> {
   const pool = getPool();
-  await pool.query(
-    "INSERT INTO transcript_chunks (meeting_id, text, speaker, timestamp) VALUES ($1, $2, $3, $4)",
+  const { rows } = await pool.query(
+    "INSERT INTO transcript_chunks (meeting_id, text, speaker, timestamp) VALUES ($1, $2, $3, $4) RETURNING *",
     [meetingId, text, speaker, timestamp]
   );
+  return rows[0];
 }
 
 export async function getChunks(meetingId: string): Promise<TranscriptChunkRow[]> {

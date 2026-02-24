@@ -1,6 +1,7 @@
 import { io, Socket } from "socket.io-client";
 
 export interface LiveTranscript {
+  id?: number;
   text: string;
   isFinal: boolean;
   speaker?: string | number | null;

@@ -211,6 +211,7 @@ export function useMeeting() {
       socket.onLiveTranscript((data) => {
         setTranscript((prev) => {
           const entry: TranscriptEntry = {
+            id: data.id,
             text: data.text,
             speaker: data.speaker,
             isFinal: data.isFinal,

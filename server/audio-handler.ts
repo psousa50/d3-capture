@@ -77,17 +77,18 @@ export class AudioHandler {
     }
   }
 
-  handleTextInput(text: string) {
+  async handleTextInput(text: string) {
     const now = Date.now();
+    const row = await insertChunk(this.meetingId, text, "You", now);
+
+    this.emit("live-transcript", { id: row.id, text, isFinal: true, speaker: "You" });
+
     const transcript = {
       chunks: [{ text, isFinal: true as const, timestamp: now }],
       fullText: text,
       startTime: now,
       endTime: now,
     };
-
-    this.emit("live-transcript", { text, isFinal: true, speaker: null });
-
     this.contextManager.addTranscript(transcript);
     this.orchestrator.trigger(transcript);
   }
