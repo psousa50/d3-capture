@@ -255,9 +255,18 @@ export function useMeeting() {
   const startRecording = useCallback(async () => {
     const socket = socketRef.current;
     if (!socket) return;
+    if (status === "recording") return;
 
     try {
       setError(null);
+
+      audioRef.current?.stop();
+      audioRef.current = null;
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+
       socket.startRecording();
 
       const audio = new AudioCapture();
@@ -273,7 +282,7 @@ export function useMeeting() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start recording");
     }
-  }, []);
+  }, [status]);
 
   const stopRecording = useCallback(() => {
     audioRef.current?.stop();
