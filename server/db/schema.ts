@@ -54,4 +54,17 @@ export async function migrate(pool: Pool) {
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_transcript_meeting ON transcript_chunks(meeting_id)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_artefacts_project ON artefacts(project_id)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_documents_meeting ON documents(meeting_id)`);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS guidance_items (
+      id TEXT PRIMARY KEY,
+      meeting_id TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+      type TEXT NOT NULL,
+      content TEXT NOT NULL,
+      resolved BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at BIGINT NOT NULL
+    )
+  `);
+
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_guidance_meeting ON guidance_items(meeting_id)`);
 }

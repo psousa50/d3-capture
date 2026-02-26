@@ -8,6 +8,8 @@ import { ContextManager } from "./context-manager";
 import { triageArtefacts } from "./triage";
 import { AccumulatedTranscript } from "./transcript-accumulator";
 import { logger } from "./logger";
+import { generateGuidanceItems } from "../modules/guidance/generator";
+import { getGuidanceItems, insertGuidanceItems, resolveGuidanceItem } from "./db/repositories/guidance";
 
 const log = logger.child({ module: "orchestrator" });
 
@@ -24,12 +26,15 @@ export class GenerationOrchestrator {
   private contextManager: ContextManager;
   private io: Server;
   private room: string;
+  private meetingId: string;
   private generating = false;
   private pendingTranscript: AccumulatedTranscript | null = null;
+  private guidanceRunning = false;
 
-  constructor(io: Server, room: string, contextManager: ContextManager) {
+  constructor(io: Server, room: string, meetingId: string, contextManager: ContextManager) {
     this.io = io;
     this.room = room;
+    this.meetingId = meetingId;
     this.contextManager = contextManager;
   }
 
@@ -95,6 +100,37 @@ export class GenerationOrchestrator {
         this.pendingTranscript = null;
         this.trigger(pending);
       }
+    }
+  }
+
+  async triggerGuidance() {
+    if (this.guidanceRunning) return;
+    this.guidanceRunning = true;
+
+    try {
+      const context = this.contextManager.buildPromptContext("guidance");
+      if (!context.trim()) return;
+
+      const existing = await getGuidanceItems(this.meetingId);
+      const result = await generateGuidanceItems(context, existing);
+
+      for (const id of result.resolve) {
+        await resolveGuidanceItem(id);
+        this.emit("guidance-item-resolved", { id });
+      }
+
+      if (result.add.length > 0) {
+        const inserted = await insertGuidanceItems(this.meetingId, result.add);
+        this.emit("guidance-items-added", { items: inserted });
+      }
+
+      if (result.resolve.length > 0 || result.add.length > 0) {
+        log.info({ resolved: result.resolve.length, added: result.add.length }, "guidance updated");
+      }
+    } catch (err) {
+      log.error({ err }, "guidance generation failed");
+    } finally {
+      this.guidanceRunning = false;
     }
   }
 

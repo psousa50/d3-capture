@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { MeetingSocket, type ArtefactUpdate, type DocumentEntry, type MeetingSnapshot, type Participant } from "./socket-client";
+import { MeetingSocket, type ArtefactUpdate, type DocumentEntry, type GuidanceItem, type MeetingSnapshot, type Participant } from "./socket-client";
 import { AudioCapture } from "./audio-capture";
 
 export type MeetingStatus = "idle" | "connecting" | "connected" | "recording" | "error";
@@ -52,6 +52,7 @@ export function useMeeting() {
     diagramsError: null,
   });
   const [documents, setDocuments] = useState<DocumentEntry[]>([]);
+  const [guidance, setGuidance] = useState<GuidanceItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [participants, setParticipants] = useState<Participant[]>([]);
@@ -172,6 +173,7 @@ export function useMeeting() {
     })));
 
     setDocuments(snapshot.documents ?? []);
+    setGuidance(snapshot.guidance ?? []);
 
     setArtefacts((prev) => {
       const next = { ...prev };
@@ -243,6 +245,18 @@ export function useMeeting() {
 
       socket.onDocumentDeleted(({ id }) => {
         setDocuments((prev) => prev.filter((d) => d.id !== id));
+      });
+
+      socket.onGuidanceItemsAdded(({ items }) => {
+        setGuidance((prev) => [...prev, ...items]);
+      });
+
+      socket.onGuidanceItemResolved(({ id }) => {
+        setGuidance((prev) => prev.map((g) => (g.id === id ? { ...g, resolved: true } : g)));
+      });
+
+      socket.onGuidanceItemUnresolved(({ id }) => {
+        setGuidance((prev) => prev.map((g) => (g.id === id ? { ...g, resolved: false } : g)));
       });
 
       setStatus("connected");
@@ -324,6 +338,16 @@ export function useMeeting() {
     socketRef.current?.deleteDocument(id);
   }, []);
 
+  const resolveGuidanceItem = useCallback((id: string) => {
+    setGuidance((prev) => prev.map((g) => (g.id === id ? { ...g, resolved: true } : g)));
+    socketRef.current?.resolveGuidance(id);
+  }, []);
+
+  const unresolveGuidanceItem = useCallback((id: string) => {
+    setGuidance((prev) => prev.map((g) => (g.id === id ? { ...g, resolved: false } : g)));
+    socketRef.current?.unresolveGuidance(id);
+  }, []);
+
   const stopMeeting = useCallback(() => {
     audioRef.current?.stop();
     audioRef.current = null;
@@ -341,6 +365,7 @@ export function useMeeting() {
     transcript,
     artefacts,
     documents,
+    guidance,
     participants,
     error,
     elapsed,
@@ -355,5 +380,7 @@ export function useMeeting() {
     editTranscript,
     deleteTranscript,
     deleteDocument,
+    resolveGuidanceItem,
+    unresolveGuidanceItem,
   };
 }

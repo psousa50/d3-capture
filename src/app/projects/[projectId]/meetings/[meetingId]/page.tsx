@@ -9,15 +9,18 @@ import { ArtefactTabs } from "../../../../../components/ArtefactTabs";
 import { MeetingControls } from "../../../../../components/MeetingControls";
 import { PresenceIndicator } from "../../../../../components/PresenceIndicator";
 import { TranscriptImportModal } from "../../../../../components/TranscriptImportModal";
+import { GuidancePanel } from "../../../../../components/GuidancePanel";
 
 export default function MeetingPage() {
   const { projectId, meetingId } = useParams<{ projectId: string; meetingId: string }>();
   const [importOpen, setImportOpen] = useState(false);
   const [transcriptCollapsed, setTranscriptCollapsed] = useState(false);
+  const [guidanceCollapsed, setGuidanceCollapsed] = useState(false);
   const {
-    status, transcript, artefacts, documents, participants, error, elapsed,
+    status, transcript, artefacts, documents, guidance, participants, error, elapsed,
     startMeeting, startRecording, stopRecording, stopMeeting,
     sendText, importTranscript, regenerateDiagrams, regenerateDiagram, editTranscript, deleteTranscript, deleteDocument,
+    resolveGuidanceItem, unresolveGuidanceItem,
   } = useMeeting();
 
   useEffect(() => {
@@ -92,6 +95,14 @@ export default function MeetingPage() {
             onRegenerateDiagram={regenerateDiagram}
           />
         </div>
+
+        <GuidancePanel
+          items={guidance}
+          collapsed={guidanceCollapsed}
+          onToggle={() => setGuidanceCollapsed((v) => !v)}
+          onResolve={resolveGuidanceItem}
+          onUnresolve={unresolveGuidanceItem}
+        />
       </div>
 
       <MeetingControls

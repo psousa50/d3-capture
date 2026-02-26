@@ -21,10 +21,19 @@ export interface DocumentEntry {
   createdAt: number;
 }
 
+export interface GuidanceItem {
+  id: string;
+  type: "question" | "suggestion";
+  content: string;
+  resolved: boolean;
+  createdAt: number;
+}
+
 export interface MeetingSnapshot {
   transcript: { id?: number; text: string; speaker: string | null; isFinal: boolean }[];
   artefacts: Record<string, string>;
   documents: DocumentEntry[];
+  guidance: GuidanceItem[];
 }
 
 export interface Participant {
@@ -159,6 +168,29 @@ export class MeetingSocket {
   onDocumentDeleted(handler: EventHandler<{ id: string }>) {
     this.socket?.on("document-deleted", handler);
     return () => { this.socket?.off("document-deleted", handler); };
+  }
+
+  onGuidanceItemsAdded(handler: EventHandler<{ items: GuidanceItem[] }>) {
+    this.socket?.on("guidance-items-added", handler);
+    return () => { this.socket?.off("guidance-items-added", handler); };
+  }
+
+  onGuidanceItemResolved(handler: EventHandler<{ id: string }>) {
+    this.socket?.on("guidance-item-resolved", handler);
+    return () => { this.socket?.off("guidance-item-resolved", handler); };
+  }
+
+  onGuidanceItemUnresolved(handler: EventHandler<{ id: string }>) {
+    this.socket?.on("guidance-item-unresolved", handler);
+    return () => { this.socket?.off("guidance-item-unresolved", handler); };
+  }
+
+  resolveGuidance(id: string) {
+    this.socket?.emit("resolve-guidance", { id });
+  }
+
+  unresolveGuidance(id: string) {
+    this.socket?.emit("unresolve-guidance", { id });
   }
 
   disconnect() {

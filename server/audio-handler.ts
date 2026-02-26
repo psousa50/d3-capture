@@ -31,11 +31,12 @@ export class AudioHandler {
     this.room = room;
     this.meetingId = meetingId;
     this.contextManager = new ContextManager(projectId, meetingId);
-    this.orchestrator = new GenerationOrchestrator(this.io, this.room, this.contextManager);
+    this.orchestrator = new GenerationOrchestrator(this.io, this.room, meetingId, this.contextManager);
 
     this.accumulator = new TranscriptAccumulator(meetingId, (transcript) => {
       this.contextManager.addTranscript(transcript);
       this.orchestrator.trigger(transcript);
+      this.orchestrator.triggerGuidance();
     });
   }
 
@@ -96,6 +97,7 @@ export class AudioHandler {
     };
     this.contextManager.addTranscript(transcript);
     this.orchestrator.trigger(transcript);
+    this.orchestrator.triggerGuidance();
   }
 
   async handleTranscriptImport(text: string) {
@@ -112,6 +114,7 @@ export class AudioHandler {
 
     this.contextManager.addTranscript(transcript);
     await this.orchestrator.triggerAll(transcript);
+    this.orchestrator.triggerGuidance();
   }
 
   async addDiagram(diagramType: string, renderer: "mermaid" | "html" = "mermaid") {

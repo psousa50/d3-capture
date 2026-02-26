@@ -25,7 +25,7 @@ server/
 ├── db/
 │   ├── connection.ts            PostgreSQL pool singleton, BIGINT type parser
 │   ├── schema.ts                Table creation and migrations (async)
-│   └── repositories/            CRUD per entity: projects, meetings, transcripts, artefacts, documents
+│   └── repositories/            CRUD per entity: projects, meetings, transcripts, artefacts, documents, guidance
 └── ws.d.ts
 
 modules/
@@ -44,6 +44,9 @@ modules/
 │   ├── post-process.ts          Mermaid validation, code fence stripping, style removal, ER fix
 │   ├── generator.ts             planDiagrams(), generateDiagram(), getDiagramProvider()
 │   └── index.ts                 Module definition
+├── guidance/
+│   ├── prompts/system.md        System prompt: analyse conversation, output JSON array of questions/suggestions
+│   └── generator.ts             generateGuidanceItems() — collects full LLM response, parses JSON, returns structured items
 └── triage/
     └── prompts.ts               buildTriagePrompt() — dynamic from module descriptions
 
@@ -64,6 +67,7 @@ src/
 │   ├── DiagramRenderer.tsx      Mermaid rendering with dark theme
 │   ├── WireframeRenderer.tsx    HTML iframe sandbox for wireframes
 │   ├── MarkdownRenderer.tsx     react-markdown with prose styling
+│   ├── GuidancePanel.tsx        Collapsible right panel: AI-generated questions/suggestions with resolve toggle
 │   ├── TranscriptPanel.tsx      Scrollable transcript with edit/delete per entry
 │   ├── MeetingControls.tsx      Record/stop, elapsed timer, text input, connection status
 │   ├── PresenceIndicator.tsx    Active participant avatars with role badges
@@ -85,9 +89,10 @@ Audio frames → per-participant Deepgram WebSocket → transcript chunks
     ↓
 TranscriptAccumulator (silence 4s + rate limit 15s) → callback
     ↓
-ContextManager.addTranscript() + GenerationOrchestrator.trigger()
-    ↓
-triageArtefacts() → decides affected types (spec, stories, existing diagram subtypes)
+ContextManager.addTranscript() + GenerationOrchestrator.trigger() + triggerGuidance()
+    ↓                                                                    ↓
+triageArtefacts() → decides affected types                   Guidance: LLM outputs JSON
+    (spec, stories, existing diagram subtypes)               → parse → persist → broadcast
     ↓
 Text generators run in parallel (spec + stories) → stream chunks to room
     ↓
@@ -104,7 +109,8 @@ All artefacts persisted via upsertArtefact() + broadcast to room
 projects (id, name, created_at)
     └── meetings (id, project_id, started_at, ended_at, status, pending_transcript)
             ├── transcript_chunks (id auto, meeting_id, text, speaker, timestamp)
-            └── documents (id, meeting_id, content, created_at)
+            ├── documents (id, meeting_id, content, created_at)
+            └── guidance_items (id, meeting_id, type, content, resolved, created_at) ON DELETE CASCADE
     └── artefacts (id, project_id, type, content, updated_at) UNIQUE(project_id, type)
 ```
 
@@ -124,6 +130,7 @@ projects (id, name, created_at)
 - `add-diagram` — create a new diagram of a specific type on demand
 - `regenerate-diagrams`, `regenerate-diagram` — trigger regeneration of existing diagrams
 - `delete-document` — remove imported document
+- `resolve-guidance`, `unresolve-guidance` — toggle guidance item resolution
 
 **Socket.IO** (server → client):
 - `meeting-state` — full snapshot on connect
@@ -131,6 +138,7 @@ projects (id, name, created_at)
 - `artefact-start/chunk/complete/error` — streaming generation
 - `presence` — participant list updates
 - `transcript-edited/deleted`, `document-added/deleted` — mutation confirmations
+- `guidance-items-added`, `guidance-item-resolved/unresolved` — guidance updates
 
 ## LLM configuration
 
@@ -151,3 +159,4 @@ Google OAuth via NextAuth.js v4. `NEXTAUTH_SECRET` + `GOOGLE_CLIENT_ID` + `GOOGL
 - **Module system** — each artefact type is a self-contained module in `modules/` with prompts, generator, and definition; registry-driven discovery
 - **Repository pattern** — one module per DB entity in `server/db/repositories/`
 - **Room-based broadcasting** — Socket.IO rooms per meeting (`meeting:{id}`)
+- **Guidance runs independently** — not gated by the artefact generation lock; lightweight JSON output parsed server-side, meeting-scoped

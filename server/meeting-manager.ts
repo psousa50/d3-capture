@@ -4,6 +4,7 @@ import { endMeeting } from "./db/repositories/meetings";
 import { getChunks, updateChunk, deleteChunk } from "./db/repositories/transcripts";
 import { getArtefacts } from "./db/repositories/artefacts";
 import { getDocuments, deleteDocument } from "./db/repositories/documents";
+import { getGuidanceItems, resolveGuidanceItem, unresolveGuidanceItem } from "./db/repositories/guidance";
 import { logger } from "./logger";
 
 const DISCONNECT_GRACE_MS = 30_000;
@@ -102,6 +103,18 @@ export class MeetingManager {
       this.io.to(room).emit("document-deleted", { id: data.id });
     });
 
+    socket.on("resolve-guidance", async (data: { id: string }) => {
+      if (!data?.id) return;
+      await resolveGuidanceItem(data.id);
+      this.io.to(room).emit("guidance-item-resolved", { id: data.id });
+    });
+
+    socket.on("unresolve-guidance", async (data: { id: string }) => {
+      if (!data?.id) return;
+      await unresolveGuidanceItem(data.id);
+      this.io.to(room).emit("guidance-item-unresolved", { id: data.id });
+    });
+
     log.info({ socketId: socket.id, total: active.producers.size }, "producer joined");
   }
 
@@ -178,9 +191,12 @@ export class MeetingManager {
   }
 
   private async sendSnapshot(socket: Socket, meetingId: string, projectId: string) {
-    const chunks = await getChunks(meetingId);
-    const artefactRows = await getArtefacts(projectId);
-    const docs = await getDocuments(meetingId);
+    const [chunks, artefactRows, docs, guidanceRows] = await Promise.all([
+      getChunks(meetingId),
+      getArtefacts(projectId),
+      getDocuments(meetingId),
+      getGuidanceItems(meetingId),
+    ]);
 
     const transcript = chunks.map((c) => ({
       id: c.id,
@@ -200,7 +216,7 @@ export class MeetingManager {
       createdAt: d.created_at,
     }));
 
-    socket.emit("meeting-state", { transcript, artefacts, documents });
+    socket.emit("meeting-state", { transcript, artefacts, documents, guidance: guidanceRows });
   }
 
   private async shutdownMeeting(meetingId: string) {
