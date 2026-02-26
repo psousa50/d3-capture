@@ -56,6 +56,7 @@ initDb().then(() => app.prepare()).then(() => {
           secureCookie: process.env.NEXTAUTH_URL?.startsWith("https://") ?? false,
         });
         if (!token) return next(new Error("Authentication failed"));
+        socket.data.userName = token.name ?? null;
         next();
       } catch {
         next(new Error("Authentication failed"));

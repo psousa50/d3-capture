@@ -16,8 +16,15 @@ function colourForId(id: string): string {
   return COLOURS[hash % COLOURS.length];
 }
 
-function initialForRole(role: "producer" | "viewer"): string {
-  return role === "producer" ? "P" : "V";
+function initialsFor(participant: Participant): string {
+  if (participant.name) {
+    return participant.name
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((w) => w.charAt(0).toUpperCase())
+      .join("");
+  }
+  return participant.role === "producer" ? "P" : "V";
 }
 
 export function PresenceIndicator({ participants }: { participants: Participant[] }) {
@@ -33,9 +40,9 @@ export function PresenceIndicator({ participants }: { participants: Participant[
           <div
             key={p.id}
             className={`flex h-6 w-6 items-center justify-center rounded-full ring-2 ring-zinc-950 text-[10px] font-semibold text-white ${colourForId(p.id)}`}
-            title={`${p.id} (${p.role})`}
+            title={p.name ?? p.role}
           >
-            {initialForRole(p.role)}
+            {initialsFor(p)}
           </div>
         ))}
         {participants.length > 5 && (

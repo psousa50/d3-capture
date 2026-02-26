@@ -8,7 +8,7 @@ import { insertDocument } from "./db/repositories/documents";
 
 interface ParticipantStream {
   socketId: string;
-  speakerIndex: number;
+  speakerName: string;
   deepgramWs: WebSocket;
 }
 
@@ -44,16 +44,17 @@ export class AudioHandler {
     }
   }
 
-  addParticipant(socketId: string) {
+  addParticipant(socketId: string, userName?: string | null) {
     if (this.participants.has(socketId)) return;
     if (!this.deepgramKey) return;
 
-    const speakerIndex = this.nextSpeakerIndex++;
-    const deepgramWs = this.connectDeepgram(this.deepgramKey, socketId, speakerIndex);
-    this.participants.set(socketId, { socketId, speakerIndex, deepgramWs });
+    const fallbackIndex = this.nextSpeakerIndex++;
+    const speakerName = userName || `Speaker ${fallbackIndex + 1}`;
+    const deepgramWs = this.connectDeepgram(this.deepgramKey, socketId, speakerName);
+    this.participants.set(socketId, { socketId, speakerName, deepgramWs });
     this.accumulator.addParticipant(socketId);
 
-    console.log(`[audio] Participant ${socketId} added (${this.participants.size} total)`);
+    console.log(`[audio] Participant ${socketId} (${speakerName}) added (${this.participants.size} total)`);
   }
 
   removeParticipant(socketId: string) {
@@ -77,11 +78,12 @@ export class AudioHandler {
     }
   }
 
-  async handleTextInput(text: string) {
+  async handleTextInput(text: string, userName?: string | null) {
     const now = Date.now();
-    const row = await insertChunk(this.meetingId, text, "You", now);
+    const speaker = userName || "You";
+    const row = await insertChunk(this.meetingId, text, speaker, now);
 
-    this.emit("live-transcript", { id: row.id, text, isFinal: true, speaker: "You" });
+    this.emit("live-transcript", { id: row.id, text, isFinal: true, speaker });
 
     const transcript = {
       chunks: [{ text, isFinal: true as const, timestamp: now }],
@@ -127,7 +129,7 @@ export class AudioHandler {
     this.participants.clear();
   }
 
-  private connectDeepgram(apiKey: string, socketId: string, speakerIndex: number): WebSocket {
+  private connectDeepgram(apiKey: string, socketId: string, speakerName: string): WebSocket {
     const deepgramUrl =
       "wss://api.deepgram.com/v1/listen?" +
       new URLSearchParams({
@@ -158,14 +160,14 @@ export class AudioHandler {
         this.accumulator.add({
           text: transcript,
           isFinal,
-          speaker: String(speakerIndex),
+          speaker: speakerName,
           timestamp: Date.now(),
         });
 
         this.emit("live-transcript", {
           text: transcript,
           isFinal,
-          speaker: speakerIndex,
+          speaker: speakerName,
         });
       }
     });

@@ -11,8 +11,8 @@ interface ActiveMeeting {
   projectId: string;
   meetingId: string;
   handler: AudioHandler;
-  producers: Set<string>;
-  viewers: Set<string>;
+  producers: Map<string, string | null>;
+  viewers: Map<string, string | null>;
   disconnectTimer: ReturnType<typeof setTimeout> | null;
 }
 
@@ -34,7 +34,7 @@ export class MeetingManager {
       console.log(`[meeting:${meetingId}] Reconnection, cancelled shutdown timer`);
     }
 
-    active.producers.add(socket.id);
+    active.producers.set(socket.id, socket.data.userName ?? null);
     socket.join(room);
     socket.data.meetingId = meetingId;
     socket.data.role = "producer";
@@ -43,7 +43,7 @@ export class MeetingManager {
     this.broadcastPresence(active);
 
     socket.on("start-recording", () => {
-      active.handler.addParticipant(socket.id);
+      active.handler.addParticipant(socket.id, socket.data.userName);
       console.log(`[meeting:${meetingId}] Recording started by ${socket.id}`);
     });
 
@@ -57,7 +57,7 @@ export class MeetingManager {
     });
 
     socket.on("text-input", (text: string) => {
-      active.handler.handleTextInput(text);
+      active.handler.handleTextInput(text, socket.data.userName);
     });
 
     socket.on("edit-transcript", async (data: { id: number; text: string }) => {
@@ -106,7 +106,7 @@ export class MeetingManager {
     socket.data.role = "viewer";
 
     if (active) {
-      active.viewers.add(socket.id);
+      active.viewers.set(socket.id, socket.data.userName ?? null);
     }
 
     this.sendSnapshot(socket, meetingId, projectId).catch(console.error);
@@ -158,8 +158,8 @@ export class MeetingManager {
       projectId,
       meetingId,
       handler,
-      producers: new Set(),
-      viewers: new Set(),
+      producers: new Map(),
+      viewers: new Map(),
       disconnectTimer: null,
     };
 
@@ -205,8 +205,8 @@ export class MeetingManager {
 
   private broadcastPresence(active: ActiveMeeting) {
     const participants = [
-      ...Array.from(active.producers).map((id) => ({ id, role: "producer" as const })),
-      ...Array.from(active.viewers).map((id) => ({ id, role: "viewer" as const })),
+      ...Array.from(active.producers.entries()).map(([id, name]) => ({ id, role: "producer" as const, name: name ?? undefined })),
+      ...Array.from(active.viewers.entries()).map(([id, name]) => ({ id, role: "viewer" as const, name: name ?? undefined })),
     ];
     this.io.to(this.roomKey(active.meetingId)).emit("presence", { participants });
   }

@@ -30,6 +30,7 @@ export interface MeetingSnapshot {
 export interface Participant {
   id: string;
   role: "producer" | "viewer";
+  name?: string;
 }
 
 export interface PresenceUpdate {
