@@ -32,7 +32,7 @@ function toReadOnlyArtefacts(raw: Record<string, string>): MeetingArtefacts {
         updating: false,
         pendingContent: "",
         label: subType.split(/[-_\s]+/).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" "),
-        renderer: "mermaid",
+        renderer: content.trimStart().startsWith("<") || content.includes("<!DOCTYPE") || content.trimStart().startsWith("```html") ? "html" : "mermaid",
       };
     }
   }
