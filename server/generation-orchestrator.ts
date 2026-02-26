@@ -327,13 +327,7 @@ export class GenerationOrchestrator {
         this.emit("artefact-chunk", { artefactType, chunk });
       }
 
-      const { content: processed, valid } = diagramMod.postProcess(fullContent, entry.renderer);
-
-      if (!valid) {
-        log.error({ artefactType }, "invalid Mermaid syntax, discarding");
-        this.emit("artefact-error", { artefactType, error: "Generated invalid diagram syntax" });
-        return;
-      }
+      const processed = diagramMod.postProcess(fullContent, entry.renderer);
 
       await this.contextManager.updateArtefact(artefactType, processed);
 

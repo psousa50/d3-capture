@@ -1,22 +1,10 @@
 import { DiagramRenderer } from "../types";
 
-const MERMAID_KEYWORDS =
-  /^(?:graph|sequenceDiagram|erDiagram|classDiagram|stateDiagram|flowchart|C4Context|C4Container|gantt|pie|gitGraph)\b/;
-
-const MERMAID_PROSE_STRIP =
-  /^[\s\S]*?\n((?:graph|sequenceDiagram|erDiagram|classDiagram|stateDiagram|flowchart|C4Context|C4Container|gantt|pie|gitGraph)\b[\s\S]*)$/;
-
 export function stripCodeFences(text: string): string {
   let cleaned = text.trim();
-  cleaned = cleaned.replace(/^```(?:mermaid)?\s*\n?/i, "");
+  cleaned = cleaned.replace(/^```(?:mermaid|html)?\s*\n?/i, "");
   cleaned = cleaned.replace(/\n?```\s*$/, "");
-  const proseMatch = cleaned.match(MERMAID_PROSE_STRIP);
-  if (proseMatch) cleaned = proseMatch[1];
   return cleaned.trim();
-}
-
-export function isValidMermaid(text: string): boolean {
-  return MERMAID_KEYWORDS.test(text.trim());
 }
 
 export function stripMermaidStyles(content: string): string {
@@ -68,12 +56,11 @@ export function fixErDiagramAttributes(content: string): string {
 export function postProcessDiagram(
   content: string,
   renderer: DiagramRenderer,
-): { content: string; valid: boolean } {
+): string {
   let processed = stripCodeFences(content);
   if (renderer === "mermaid") {
     processed = stripMermaidStyles(processed);
     processed = fixErDiagramAttributes(processed);
-    return { content: processed, valid: isValidMermaid(processed) };
   }
-  return { content: processed, valid: true };
+  return processed;
 }

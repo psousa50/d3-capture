@@ -98,14 +98,10 @@ export class ContextManager {
       parts.push(`## Meeting conversation\n${allText}`);
     }
 
-    if (generatorType === "diagram") {
-      const diagramEntries = Object.entries(ctx.artefactStates)
-        .filter(([key]) => key.startsWith("diagram:") && key !== excludeKey);
-      if (diagramEntries.length > 0) {
-        const diagramContext = diagramEntries
-          .map(([key, content]) => `### ${key}\n${content}`)
-          .join("\n\n");
-        parts.push(`## Current diagrams (update based on the conversation)\n${diagramContext}`);
+    if (generatorType === "diagram" && excludeKey) {
+      const current = ctx.artefactStates[excludeKey];
+      if (current) {
+        parts.push(`## Current diagram\n${current}`);
       }
     }
 
