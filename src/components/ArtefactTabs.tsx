@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { DiagramRenderer } from "./DiagramRenderer";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { WireframeRenderer } from "./WireframeRenderer";
@@ -36,12 +36,11 @@ interface ArtefactTabsProps {
   artefacts: MeetingArtefacts;
   documents?: DocumentEntry[];
   onDeleteDocument?: (id: string) => void;
-  onAddDiagram?: (type: string, renderer: "mermaid" | "html") => void;
   onRegenerateDiagrams?: () => void;
   onRegenerateDiagram?: (type: string, renderer: "mermaid" | "html") => void;
 }
 
-export function ArtefactTabs({ artefacts, documents, onDeleteDocument, onAddDiagram, onRegenerateDiagrams, onRegenerateDiagram }: ArtefactTabsProps) {
+export function ArtefactTabs({ artefacts, documents, onDeleteDocument, onRegenerateDiagrams, onRegenerateDiagram }: ArtefactTabsProps) {
   const [activeTab, setActiveTab] = useState<TopTab>("diagrams");
   const [activeDiagram, setActiveDiagram] = useState<string | null>(null);
 
@@ -101,7 +100,6 @@ export function ArtefactTabs({ artefacts, documents, onDeleteDocument, onAddDiag
             activeDiagram={activeDiagram}
             onSelectDiagram={setActiveDiagram}
             error={artefacts.diagramsError}
-            onAdd={onAddDiagram}
             onRegenerate={onRegenerateDiagrams}
             onRegenerateSingle={onRegenerateDiagram}
           />
@@ -205,73 +203,12 @@ function DocumentsPanel({
   );
 }
 
-const DIAGRAM_TYPES: { type: string; label: string; renderer: "mermaid" | "html" }[] = [
-  { type: "flowchart", label: "Flowchart", renderer: "mermaid" },
-  { type: "sequence", label: "Sequence Diagram", renderer: "mermaid" },
-  { type: "er", label: "ER Diagram", renderer: "mermaid" },
-  { type: "c4-context", label: "C4 Context", renderer: "mermaid" },
-  { type: "class", label: "Class Diagram", renderer: "mermaid" },
-  { type: "state", label: "State Machine", renderer: "mermaid" },
-  { type: "wireframe", label: "Wireframe", renderer: "html" },
-];
-
-function AddDiagramButton({
-  existingKeys,
-  onAdd,
-}: {
-  existingKeys: string[];
-  onAdd: (type: string, renderer: "mermaid" | "html") => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [open]);
-
-  const available = DIAGRAM_TYPES.filter((d) => !existingKeys.includes(d.type));
-  if (available.length === 0) return null;
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
-      >
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-          <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-        </svg>
-        Add
-      </button>
-      {open && (
-        <div className="absolute right-0 top-full z-10 mt-1 min-w-[160px] rounded-lg border border-zinc-800 bg-zinc-900 py-1 shadow-xl">
-          {available.map((d) => (
-            <button
-              key={d.type}
-              onClick={() => { onAdd(d.type, d.renderer); setOpen(false); }}
-              className="block w-full px-3 py-1.5 text-left text-xs text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
-            >
-              {d.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function DiagramPanel({
   diagrams,
   diagramKeys,
   activeDiagram,
   onSelectDiagram,
   error,
-  onAdd,
   onRegenerate,
   onRegenerateSingle,
 }: {
@@ -280,7 +217,6 @@ function DiagramPanel({
   activeDiagram: string | null;
   onSelectDiagram: (key: string) => void;
   error: string | null;
-  onAdd?: (type: string, renderer: "mermaid" | "html") => void;
   onRegenerate?: () => void;
   onRegenerateSingle?: (type: string, renderer: "mermaid" | "html") => void;
 }) {
@@ -298,8 +234,7 @@ function DiagramPanel({
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mb-2 text-zinc-700">
           <circle cx="12" cy="12" r="10" /><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" /><path d="M2 12h20" />
         </svg>
-        <p className="mb-3 text-xs text-zinc-600">No diagrams yet</p>
-        {onAdd && <AddDiagramButton existingKeys={[]} onAdd={onAdd} />}
+        <p className="text-xs text-zinc-600">No diagrams yet</p>
       </div>
     );
   }
@@ -328,7 +263,6 @@ function DiagramPanel({
           ))}
         </div>
         <div className="flex items-center gap-1">
-          {onAdd && <AddDiagramButton existingKeys={diagramKeys} onAdd={onAdd} />}
           {activeDiagram && active && onRegenerateSingle && !active.updating && (
             <button
               onClick={() => onRegenerateSingle(activeDiagram, active.renderer)}

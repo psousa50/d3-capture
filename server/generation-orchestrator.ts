@@ -52,11 +52,14 @@ export class GenerationOrchestrator {
       if (affected.length === 0) return;
 
       const textTasks: Promise<void>[] = [];
-      const diagramTypes: string[] = [];
+      const diagramUpdates: string[] = [];
+      const newDiagrams: string[] = [];
 
       for (const type of affected) {
-        if (type.startsWith("diagram:")) {
-          diagramTypes.push(type.slice("diagram:".length));
+        if (type.startsWith("diagram:new:")) {
+          newDiagrams.push(type.slice("diagram:new:".length));
+        } else if (type.startsWith("diagram:")) {
+          diagramUpdates.push(type.slice("diagram:".length));
         } else {
           const module = getTextModules().find((m) => m.type === type);
           if (module) {
@@ -70,10 +73,17 @@ export class GenerationOrchestrator {
         console.log("[orchestrator] Text artefacts complete");
       }
 
-      if (diagramTypes.length > 0) {
-        console.log("[orchestrator] Updating existing diagrams:", diagramTypes.join(", "));
-        await withTimeout(this.runDiagramGeneration(diagramTypes), GENERATION_TIMEOUT_MS, "diagrams")
+      if (diagramUpdates.length > 0) {
+        console.log("[orchestrator] Updating existing diagrams:", diagramUpdates.join(", "));
+        await withTimeout(this.runDiagramGeneration(diagramUpdates), GENERATION_TIMEOUT_MS, "diagrams")
           .catch((err) => console.error("[orchestrator] Diagram update failed:", err));
+      }
+
+      for (const type of newDiagrams) {
+        const renderer = this.inferRenderer(type);
+        console.log(`[orchestrator] Creating new diagram: ${type} (${renderer})`);
+        await withTimeout(this.addDiagramInternal(type, renderer), GENERATION_TIMEOUT_MS, `diagram:new:${type}`)
+          .catch((err) => console.error(`[orchestrator] New diagram failed: ${type}`, err));
       }
 
       console.log("[orchestrator] Generation complete");
@@ -128,24 +138,26 @@ export class GenerationOrchestrator {
     this.generating = true;
 
     try {
-      const diagramKey = `diagram:${diagramType}`;
-      console.log(`[orchestrator] Adding ${diagramKey}`);
-
-      const diagramMod = getDiagramModule();
-      if (!diagramMod) return;
-
-      const plan: DiagramPlan = { type: diagramType, focus: diagramType, renderer };
-
-      await withTimeout(
-        this.runSingleDiagram(plan),
-        GENERATION_TIMEOUT_MS,
-        diagramKey,
-      );
-    } catch (err) {
-      console.error(`[orchestrator] Add diagram failed:`, err);
+      await this.addDiagramInternal(diagramType, renderer);
     } finally {
       this.generating = false;
     }
+  }
+
+  private async addDiagramInternal(diagramType: string, renderer: "mermaid" | "html") {
+    const diagramKey = `diagram:${diagramType}`;
+    console.log(`[orchestrator] Adding ${diagramKey}`);
+
+    const diagramMod = getDiagramModule();
+    if (!diagramMod) return;
+
+    const plan: DiagramPlan = { type: diagramType, focus: diagramType, renderer };
+    await this.runSingleDiagram(plan);
+  }
+
+  private inferRenderer(diagramType: string): "mermaid" | "html" {
+    const htmlTypes = ["wireframe", "mockup", "ui", "layout", "page-layout"];
+    return htmlTypes.includes(diagramType) ? "html" : "mermaid";
   }
 
   async regenerateSingleDiagram(diagramType: string, renderer: "mermaid" | "html" = "mermaid") {

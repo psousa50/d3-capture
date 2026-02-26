@@ -2,8 +2,11 @@ import { getProviderForGenerator } from "./llm/config";
 import { buildTriagePrompt } from "../modules/triage/prompts";
 import { getTriageDescriptions, getNormaliseMap } from "../modules/registry";
 
+const NEW_DIAGRAM_PREFIX = "diagram:new:";
+
 function normalise(raw: string, artefactTypes: string[]): string | null {
   const key = raw.toLowerCase().trim();
+  if (key.startsWith(NEW_DIAGRAM_PREFIX) && key.length > NEW_DIAGRAM_PREFIX.length) return key;
   if (artefactTypes.includes(key)) return key;
   const map = getNormaliseMap();
   return map[key] ?? null;
@@ -40,7 +43,7 @@ export async function triageArtefacts(
 
     const normalised = parsed
       .map((t: string) => normalise(t, artefactTypes))
-      .filter((t): t is string => t !== null && artefactTypes.includes(t));
+      .filter((t): t is string => t !== null && (artefactTypes.includes(t) || t.startsWith(NEW_DIAGRAM_PREFIX)));
 
     const unique = [...new Set(normalised)];
     console.log("[triage] Raw LLM response:", cleaned, "→ normalised:", unique);
