@@ -11,6 +11,7 @@ export interface DiagramPlan {
 export interface GenerateOptions {
   context: string;
   currentContent?: string;
+  artefactStates?: Record<string, string>;
 }
 
 export interface Generator {

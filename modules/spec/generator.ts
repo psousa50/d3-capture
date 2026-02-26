@@ -1,7 +1,10 @@
 import { Generator, GenerateOptions } from "../types";
+import { loadPrompt, fillPlaceholders } from "../prompts";
 import { getProviderForGenerator } from "../../server/llm/config";
-import { CREATE_PROMPT } from "./prompts/create";
-import { UPDATE_PROMPT } from "./prompts/update";
+
+const CREATE_PROMPT = loadPrompt(new URL("./prompts/create.md", import.meta.url));
+const UPDATE_PROMPT = loadPrompt(new URL("./prompts/update.md", import.meta.url));
+const SPEC_TEMPLATE = loadPrompt(new URL("./prompts/spec.md", import.meta.url));
 
 export class SpecGenerator implements Generator {
   type = "spec";
@@ -10,14 +13,16 @@ export class SpecGenerator implements Generator {
     const provider = getProviderForGenerator("spec");
     const isUpdate = !!currentContent;
 
-    const userContent = isUpdate
-      ? `## Current spec\n${currentContent}\n\n## New conversation\n${context}`
-      : context;
+    const prompt = fillPlaceholders(isUpdate ? UPDATE_PROMPT : CREATE_PROMPT, {
+      TRANSCRIPT: context,
+      TEMPLATE: SPEC_TEMPLATE,
+      EXISTING_SPEC: currentContent || "",
+    });
 
     yield* provider.stream({
-      system: isUpdate ? UPDATE_PROMPT : CREATE_PROMPT,
-      messages: [{ role: "user", content: userContent }],
-      maxTokens: 4096,
+      system: prompt,
+      messages: [{ role: "user", content: "Generate." }],
+      maxTokens: 8192,
     });
   }
 }

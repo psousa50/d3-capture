@@ -1,23 +1,28 @@
 import { Generator, GenerateOptions } from "../types";
+import { loadPrompt, fillPlaceholders } from "../prompts";
 import { getProviderForGenerator } from "../../server/llm/config";
-import { CREATE_PROMPT } from "./prompts/create";
-import { UPDATE_PROMPT } from "./prompts/update";
+
+const CREATE_PROMPT = loadPrompt(new URL("./prompts/create.md", import.meta.url));
+const STORY_TEMPLATE = loadPrompt(new URL("./prompts/story.md", import.meta.url));
 
 export class StoryGenerator implements Generator {
   type = "stories";
 
-  async *generate({ context, currentContent }: GenerateOptions): AsyncIterable<string> {
-    const provider = getProviderForGenerator("stories");
-    const isUpdate = !!currentContent;
+  async *generate({ artefactStates }: GenerateOptions): AsyncIterable<string> {
+    const spec = artefactStates?.["spec"];
+    if (!spec) return;
 
-    const userContent = isUpdate
-      ? `## Current stories\n${currentContent}\n\n## New conversation\n${context}`
-      : context;
+    const provider = getProviderForGenerator("stories");
+
+    const prompt = fillPlaceholders(CREATE_PROMPT, {
+      SPEC: spec,
+      STORY_TEMPLATE: STORY_TEMPLATE,
+    });
 
     yield* provider.stream({
-      system: isUpdate ? UPDATE_PROMPT : CREATE_PROMPT,
-      messages: [{ role: "user", content: userContent }],
-      maxTokens: 4096,
+      system: prompt,
+      messages: [{ role: "user", content: "Generate." }],
+      maxTokens: 8192,
     });
   }
 }

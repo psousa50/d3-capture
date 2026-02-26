@@ -34,7 +34,9 @@ export class GenerationOrchestrator {
   }
 
   private getTriageTypes(): string[] {
-    const textTypes = getTextModules().map((m) => m.type);
+    const textTypes = getTextModules()
+      .filter((m) => m.type !== "stories")
+      .map((m) => m.type);
     const diagramKeys = Object.keys(this.contextManager.getArtefactStates())
       .filter((k) => k.startsWith("diagram:"));
     return textTypes.concat(diagramKeys);
@@ -54,7 +56,7 @@ export class GenerationOrchestrator {
 
       if (affected.length === 0) return;
 
-      const textTasks: Promise<void>[] = [];
+      let specAffected = false;
       const diagramUpdates: string[] = [];
       const newDiagrams: string[] = [];
 
@@ -63,17 +65,13 @@ export class GenerationOrchestrator {
           newDiagrams.push(type.slice("diagram:new:".length));
         } else if (type.startsWith("diagram:")) {
           diagramUpdates.push(type.slice("diagram:".length));
-        } else {
-          const module = getTextModules().find((m) => m.type === type);
-          if (module) {
-            textTasks.push(withTimeout(this.runGenerator(module.generator), GENERATION_TIMEOUT_MS, type));
-          }
+        } else if (type === "spec") {
+          specAffected = true;
         }
       }
 
-      if (textTasks.length > 0) {
-        await Promise.allSettled(textTasks);
-        log.info("text artefacts complete");
+      if (specAffected) {
+        await this.runSpecThenStories();
       }
 
       if (diagramUpdates.length > 0) {
@@ -199,16 +197,7 @@ export class GenerationOrchestrator {
 
     try {
       log.info("generating text artefacts (transcript import)");
-
-      const textTasks: Promise<void>[] = [];
-      for (const module of getTextModules()) {
-        textTasks.push(withTimeout(this.runGenerator(module.generator), GENERATION_TIMEOUT_MS, module.type));
-      }
-
-      if (textTasks.length > 0) {
-        await Promise.allSettled(textTasks);
-      }
-
+      await this.runSpecThenStories();
       log.info("generation complete");
     } finally {
       this.generating = false;
@@ -220,17 +209,33 @@ export class GenerationOrchestrator {
     }
   }
 
+  private async runSpecThenStories() {
+    const specModule = getTextModules().find((m) => m.type === "spec");
+    const storiesModule = getTextModules().find((m) => m.type === "stories");
+
+    if (specModule) {
+      await withTimeout(this.runGenerator(specModule.generator), GENERATION_TIMEOUT_MS, "spec");
+      log.info("spec complete");
+    }
+
+    if (storiesModule) {
+      await withTimeout(this.runGenerator(storiesModule.generator), GENERATION_TIMEOUT_MS, "stories");
+      log.info("stories complete");
+    }
+  }
+
   private async runGenerator(generator: Generator) {
     const context = this.contextManager.buildPromptContext(generator.type);
-    if (!context.trim()) return;
+    if (!context.trim() && generator.type !== "stories") return;
 
-    const currentContent = this.contextManager.getArtefactStates()[generator.type];
+    const artefactStates = this.contextManager.getArtefactStates();
+    const currentContent = artefactStates[generator.type];
     let fullContent = "";
 
     this.emit("artefact-start", { artefactType: generator.type });
 
     try {
-      for await (const chunk of generator.generate({ context, currentContent })) {
+      for await (const chunk of generator.generate({ context, currentContent, artefactStates })) {
         fullContent += chunk;
         this.emit("artefact-chunk", { artefactType: generator.type, chunk });
       }
