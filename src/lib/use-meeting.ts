@@ -304,6 +304,10 @@ export function useMeeting() {
     socketRef.current?.importTranscript(text);
   }, []);
 
+  const addDiagram = useCallback((type: string, renderer: "mermaid" | "html") => {
+    socketRef.current?.addDiagram(type, renderer);
+  }, []);
+
   const regenerateDiagrams = useCallback(() => {
     socketRef.current?.regenerateDiagrams();
   }, []);
@@ -350,6 +354,7 @@ export function useMeeting() {
     stopMeeting,
     sendText,
     importTranscript,
+    addDiagram,
     regenerateDiagrams,
     regenerateDiagram,
     editTranscript,

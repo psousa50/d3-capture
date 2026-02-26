@@ -11,8 +11,8 @@ Rules:
 - Only select artefacts where the new conversation is directly relevant
 - If the conversation is small talk, greetings, or filler ("yeah", "makes sense", "ok"), return an empty array
 ${typeLines}
-- When specific diagram subtypes are listed (e.g. "diagram:wireframe"), return those exact keys instead of "diagram"
-- Only return "diagram" when no subtypes are listed or when ALL diagrams are affected
+- Only return types that are in the list above — do not invent new types
+- For diagram subtypes (e.g. "diagram:wireframe"), return the exact key as listed
 
 Respond with ONLY a JSON array of artefact type strings. No markdown, no explanation.
 Examples: ["spec", "diagram:wireframe"] or ["stories"] or []`;

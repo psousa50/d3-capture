@@ -13,7 +13,7 @@ server/
 ├── audio-handler.ts             Per-participant Deepgram WebSocket streams, delegates to TranscriptAccumulator
 ├── transcript-accumulator.ts    Buffers transcript chunks, silence detection (4s), rate-limiting (15s min), DB writes
 ├── context-manager.ts           Two-tier context window (recent 5min verbatim + older summarised), builds LLM prompts, persists artefacts
-├── generation-orchestrator.ts   Triage → parallel text generation (spec+stories) → sequential diagram generation, single-at-a-time queue
+├── generation-orchestrator.ts   Triage → parallel text generation (spec+stories) → auto-update existing diagrams, on-demand diagram creation, single-at-a-time queue
 ├── triage.ts                    LLM classifier deciding which artefacts are affected by new transcript, normalises output
 ├── llm/
 │   ├── types.ts                 LLMProvider interface: stream(params) → AsyncIterable<string>
@@ -87,11 +87,13 @@ TranscriptAccumulator (silence 4s + rate limit 15s) → callback
     ↓
 ContextManager.addTranscript() + GenerationOrchestrator.trigger()
     ↓
-triageArtefacts() → decides affected types (spec, stories, diagram)
+triageArtefacts() → decides affected types (spec, stories, existing diagram subtypes)
     ↓
 Text generators run in parallel (spec + stories) → stream chunks to room
     ↓
-Diagram generation runs sequentially after text → planDiagrams() → per-type render
+Existing diagrams auto-update if triage selects their subtype (e.g. diagram:er)
+    ↓
+New diagrams are user-initiated via add-diagram socket event → on-demand generation
     ↓
 All artefacts persisted via upsertArtefact() + broadcast to room
 ```
@@ -119,7 +121,8 @@ projects (id, name, created_at)
 - `audio-data`, `start-recording`, `stop-recording` — audio pipeline
 - `text-input`, `import-transcript` — manual text entry
 - `edit-transcript`, `delete-transcript` — transcript mutations
-- `regenerate-diagrams`, `regenerate-diagram` — trigger regeneration
+- `add-diagram` — create a new diagram of a specific type on demand
+- `regenerate-diagrams`, `regenerate-diagram` — trigger regeneration of existing diagrams
 - `delete-document` — remove imported document
 
 **Socket.IO** (server → client):

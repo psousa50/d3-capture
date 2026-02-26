@@ -111,6 +111,10 @@ export class AudioHandler {
     await this.orchestrator.triggerAll(transcript);
   }
 
+  async addDiagram(diagramType: string, renderer: "mermaid" | "html" = "mermaid") {
+    await this.orchestrator.addDiagram(diagramType, renderer);
+  }
+
   async regenerateDiagrams() {
     await this.orchestrator.regenerateDiagrams();
   }

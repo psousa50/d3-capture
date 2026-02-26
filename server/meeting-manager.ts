@@ -72,6 +72,12 @@ export class MeetingManager {
       this.io.to(room).emit("transcript-deleted", { id: data.id });
     });
 
+    socket.on("add-diagram", (data: { type: string; renderer?: "mermaid" | "html" }) => {
+      if (!data?.type) return;
+      console.log(`[meeting:${meetingId}] Add diagram (${data.type}) requested by ${socket.id}`);
+      active.handler.addDiagram(data.type, data.renderer ?? "mermaid");
+    });
+
     socket.on("regenerate-diagrams", () => {
       console.log(`[meeting:${meetingId}] Diagram regeneration (all) requested by ${socket.id}`);
       active.handler.regenerateDiagrams();

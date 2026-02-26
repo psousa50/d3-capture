@@ -109,6 +109,10 @@ export class MeetingSocket {
     this.socket?.emit("import-transcript", text);
   }
 
+  addDiagram(type: string, renderer: "mermaid" | "html") {
+    this.socket?.emit("add-diagram", { type, renderer });
+  }
+
   regenerateDiagrams() {
     this.socket?.emit("regenerate-diagrams");
   }

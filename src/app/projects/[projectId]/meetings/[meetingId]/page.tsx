@@ -17,7 +17,7 @@ export default function MeetingPage() {
   const {
     status, transcript, artefacts, documents, participants, error, elapsed,
     startMeeting, startRecording, stopRecording, stopMeeting,
-    sendText, importTranscript, regenerateDiagrams, regenerateDiagram, editTranscript, deleteTranscript, deleteDocument,
+    sendText, importTranscript, addDiagram, regenerateDiagrams, regenerateDiagram, editTranscript, deleteTranscript, deleteDocument,
   } = useMeeting();
 
   useEffect(() => {
@@ -88,6 +88,7 @@ export default function MeetingPage() {
             artefacts={artefacts}
             documents={documents}
             onDeleteDocument={deleteDocument}
+            onAddDiagram={addDiagram}
             onRegenerateDiagrams={regenerateDiagrams}
             onRegenerateDiagram={regenerateDiagram}
           />
