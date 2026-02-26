@@ -1,6 +1,9 @@
 import { DiagramPlan } from "../types";
 import { LLMProvider } from "../../server/llm/types";
 import { getProviderForGenerator } from "../../server/llm/config";
+import { logger } from "../../server/logger";
+
+const log = logger.child({ module: "diagram" });
 import {
   PLANNING_PROMPT,
   MERMAID_CREATE_PROMPT,
@@ -40,7 +43,7 @@ export async function planDiagrams(
       )
       .slice(0, 4);
   } catch {
-    console.error("[diagram] Failed to parse plan, falling back:", json);
+    log.error({ response: json }, "failed to parse plan, falling back");
     return [
       {
         type: "flowchart",

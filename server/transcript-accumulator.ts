@@ -1,4 +1,7 @@
 import { insertChunk } from "./db/repositories/transcripts";
+import { logger } from "./logger";
+
+const log = logger.child({ module: "transcript" });
 
 export interface TranscriptChunk {
   text: string;
@@ -46,7 +49,7 @@ export class TranscriptAccumulator {
     if (!chunk.isFinal) return;
 
     this.chunks.push(chunk);
-    insertChunk(this.meetingId, chunk.text, chunk.speaker ?? null, chunk.timestamp).catch(console.error);
+    insertChunk(this.meetingId, chunk.text, chunk.speaker ?? null, chunk.timestamp).catch((err) => log.error({ err }, "failed to insert chunk"));
 
     if (chunk.speaker) {
       this.lastChunkTime.set(chunk.speaker, Date.now());

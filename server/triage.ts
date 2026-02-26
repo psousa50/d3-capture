@@ -1,6 +1,9 @@
 import { getProviderForGenerator } from "./llm/config";
 import { buildTriagePrompt } from "../modules/triage/prompts";
 import { getTriageDescriptions, getNormaliseMap } from "../modules/registry";
+import { logger } from "./logger";
+
+const log = logger.child({ module: "triage" });
 
 const NEW_DIAGRAM_PREFIX = "diagram:new:";
 
@@ -37,7 +40,7 @@ export async function triageArtefacts(
     const cleaned = json.replace(/```(?:json)?\n?/g, "").replace(/```/g, "").trim();
     const parsed = JSON.parse(cleaned);
     if (!Array.isArray(parsed)) {
-      console.warn("[triage] Response was not an array, running all generators:", json);
+      log.warn({ response: json }, "response was not an array, running all generators");
       return artefactTypes;
     }
 
@@ -46,10 +49,10 @@ export async function triageArtefacts(
       .filter((t): t is string => t !== null && (artefactTypes.includes(t) || t.startsWith(NEW_DIAGRAM_PREFIX)));
 
     const unique = [...new Set(normalised)];
-    console.log("[triage] Raw LLM response:", cleaned, "→ normalised:", unique);
+    log.info({ raw: cleaned, normalised: unique }, "triage result");
     return unique;
   } catch {
-    console.error("[triage] Failed to parse response, running all generators:", json);
+    log.error({ response: json }, "failed to parse response, running all generators");
     return artefactTypes;
   }
 }

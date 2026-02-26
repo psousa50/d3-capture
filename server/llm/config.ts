@@ -3,6 +3,10 @@ import { AnthropicProvider } from "./anthropic";
 import { OpenAIProvider } from "./openai";
 import { OpenAICompatibleProvider } from "./openai-compatible";
 import { ClaudeCodeProvider } from "./claude-code";
+import { LoggingProvider } from "./logging-provider";
+import { logger } from "../logger";
+
+const log = logger.child({ module: "llm" });
 
 type ProviderName = "anthropic" | "openai" | "groq" | "claude-code";
 
@@ -27,9 +31,9 @@ const config: LLMConfig = {
   generators: readGeneratorOverrides(),
 };
 
-console.log(`[llm] default provider: ${config.defaultProvider}`);
+log.info({ provider: config.defaultProvider }, "default provider");
 for (const [gen, prov] of Object.entries(config.generators)) {
-  console.log(`[llm] override: ${gen} → ${prov}`);
+  log.info({ generator: gen, provider: prov }, "override");
 }
 
 const providers = new Map<ProviderName, LLMProvider>();
@@ -38,7 +42,7 @@ function getOrCreateProvider(name: ProviderName): LLMProvider {
   const existing = providers.get(name);
   if (existing) return existing;
 
-  const provider = createProvider(name);
+  const provider = new LoggingProvider(createProvider(name), name);
   providers.set(name, provider);
   return provider;
 }
@@ -64,7 +68,7 @@ function createProvider(name: ProviderName): LLMProvider {
 
 export function getProviderForGenerator(generator: string): LLMProvider {
   const providerName = config.generators[generator] ?? config.defaultProvider;
-  console.log(`[llm] ${generator} → ${providerName}`);
+  log.info({ generator, provider: providerName }, "routing");
   return getOrCreateProvider(providerName);
 }
 

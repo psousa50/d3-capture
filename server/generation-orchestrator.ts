@@ -7,6 +7,9 @@ import {
 import { ContextManager } from "./context-manager";
 import { triageArtefacts } from "./triage";
 import { AccumulatedTranscript } from "./transcript-accumulator";
+import { logger } from "./logger";
+
+const log = logger.child({ module: "orchestrator" });
 
 const GENERATION_TIMEOUT_MS = 120_000;
 
@@ -47,7 +50,7 @@ export class GenerationOrchestrator {
 
     try {
       const affected = await triageArtefacts(transcript.fullText, this.getTriageTypes());
-      console.log("[orchestrator] Triage result:", affected.length === 0 ? "nothing to update" : affected.join(", "));
+      log.info({ affected }, "triage result");
 
       if (affected.length === 0) return;
 
@@ -70,23 +73,23 @@ export class GenerationOrchestrator {
 
       if (textTasks.length > 0) {
         await Promise.allSettled(textTasks);
-        console.log("[orchestrator] Text artefacts complete");
+        log.info("text artefacts complete");
       }
 
       if (diagramUpdates.length > 0) {
-        console.log("[orchestrator] Updating existing diagrams:", diagramUpdates.join(", "));
+        log.info({ diagrams: diagramUpdates }, "updating existing diagrams");
         await withTimeout(this.runDiagramGeneration(diagramUpdates), GENERATION_TIMEOUT_MS, "diagrams")
-          .catch((err) => console.error("[orchestrator] Diagram update failed:", err));
+          .catch((err) => log.error({ err }, "diagram update failed"));
       }
 
       for (const type of newDiagrams) {
         const renderer = this.inferRenderer(type);
-        console.log(`[orchestrator] Creating new diagram: ${type} (${renderer})`);
+        log.info({ diagram: type, renderer }, "creating new diagram");
         await withTimeout(this.addDiagramInternal(type, renderer), GENERATION_TIMEOUT_MS, `diagram:new:${type}`)
-          .catch((err) => console.error(`[orchestrator] New diagram failed: ${type}`, err));
+          .catch((err) => log.error({ err, diagram: type }, "new diagram failed"));
       }
 
-      console.log("[orchestrator] Generation complete");
+      log.info("generation complete");
     } finally {
       this.generating = false;
       if (this.pendingTranscript) {
@@ -113,21 +116,21 @@ export class GenerationOrchestrator {
 
       if (plans.length === 0) return;
 
-      console.log("[orchestrator] Regenerating all diagrams (manual)");
+      log.info("regenerating all diagrams (manual)");
       await this.contextManager.clearDiagramArtefacts();
 
       this.emit("artefact-start", { artefactType: "diagram" });
 
       const tasks = plans.map((plan) =>
         withTimeout(this.runSingleDiagram(plan), GENERATION_TIMEOUT_MS, `diagram:${plan.type}`)
-          .then(() => console.log(`[diagram] Complete: diagram:${plan.type}`))
-          .catch((err) => console.error(`[diagram] Failed: diagram:${plan.type}`, err)),
+          .then(() => log.info({ diagram: plan.type }, "diagram complete"))
+          .catch((err) => log.error({ err, diagram: plan.type }, "diagram failed")),
       );
       await Promise.allSettled(tasks);
 
       this.emit("artefact-complete", { artefactType: "diagram" });
     } catch (err) {
-      console.error("[orchestrator] Diagram regeneration failed:", err);
+      log.error({ err }, "diagram regeneration failed");
     } finally {
       this.generating = false;
     }
@@ -146,7 +149,7 @@ export class GenerationOrchestrator {
 
   private async addDiagramInternal(diagramType: string, renderer: "mermaid" | "html") {
     const diagramKey = `diagram:${diagramType}`;
-    console.log(`[orchestrator] Adding ${diagramKey}`);
+    log.info({ diagram: diagramKey }, "adding diagram");
 
     const diagramMod = getDiagramModule();
     if (!diagramMod) return;
@@ -166,7 +169,7 @@ export class GenerationOrchestrator {
 
     try {
       const diagramKey = `diagram:${diagramType}`;
-      console.log(`[orchestrator] Regenerating ${diagramKey} (manual)`);
+      log.info({ diagram: diagramKey }, "regenerating diagram (manual)");
 
       const diagramMod = getDiagramModule();
       if (!diagramMod) return;
@@ -180,7 +183,7 @@ export class GenerationOrchestrator {
         diagramKey,
       );
     } catch (err) {
-      console.error(`[orchestrator] Single diagram regeneration failed:`, err);
+      log.error({ err }, "single diagram regeneration failed");
     } finally {
       this.generating = false;
     }
@@ -195,7 +198,7 @@ export class GenerationOrchestrator {
     this.pendingTranscript = null;
 
     try {
-      console.log("[orchestrator] Generating text artefacts (transcript import)");
+      log.info("generating text artefacts (transcript import)");
 
       const textTasks: Promise<void>[] = [];
       for (const module of getTextModules()) {
@@ -206,7 +209,7 @@ export class GenerationOrchestrator {
         await Promise.allSettled(textTasks);
       }
 
-      console.log("[orchestrator] Generation complete");
+      log.info("generation complete");
     } finally {
       this.generating = false;
       if (this.pendingTranscript) {
@@ -240,7 +243,7 @@ export class GenerationOrchestrator {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Generation failed";
-      console.error(`[generator:${generator.type}] Error:`, err);
+      log.error({ err, generator: generator.type }, "generator error");
       this.emit("artefact-error", {
         artefactType: generator.type,
         error: message,
@@ -254,7 +257,7 @@ export class GenerationOrchestrator {
 
     const baseContext = this.contextManager.buildPromptContext("diagram");
     if (!baseContext.trim()) {
-      console.warn("[diagram] Empty context, skipping diagram update");
+      log.warn("empty context, skipping diagram update");
       return;
     }
 
@@ -269,7 +272,7 @@ export class GenerationOrchestrator {
     this.emit("artefact-start", { artefactType: "diagram" });
 
     try {
-      console.log("[diagram] Updating diagrams:", toUpdate.map((d) => d.type).join(", "));
+      log.info({ diagrams: toUpdate.map((d) => d.type) }, "updating diagrams");
 
       const plan: DiagramPlan[] = toUpdate.map((d) => ({
         type: d.type,
@@ -280,14 +283,14 @@ export class GenerationOrchestrator {
       const diagramTasks = plan.map((entry) => {
         const diagramKey = `diagram:${entry.type}`;
         const currentContent = artefactStates[diagramKey];
-        console.log(`[diagram] Updating: ${diagramKey}`);
+        log.info({ diagram: diagramKey }, "updating diagram");
         return withTimeout(
           this.runSingleDiagram(entry, currentContent),
           GENERATION_TIMEOUT_MS,
           diagramKey,
         ).then(
-          () => console.log(`[diagram] Complete: ${diagramKey}`),
-          (err) => console.error(`[diagram] Failed: ${diagramKey}`, err),
+          () => log.info({ diagram: diagramKey }, "diagram complete"),
+          (err) => log.error({ err, diagram: diagramKey }, "diagram failed"),
         );
       });
 
@@ -296,7 +299,7 @@ export class GenerationOrchestrator {
       this.emit("artefact-complete", { artefactType: "diagram" });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Diagram update failed";
-      console.error("[generator:diagram] Error:", err);
+      log.error({ err }, "diagram generation error");
       this.emit("artefact-error", {
         artefactType: "diagram",
         error: message,
@@ -327,7 +330,7 @@ export class GenerationOrchestrator {
       const { content: processed, valid } = diagramMod.postProcess(fullContent, entry.renderer);
 
       if (!valid) {
-        console.error(`[generator:${artefactType}] Invalid Mermaid syntax, discarding`);
+        log.error({ artefactType }, "invalid Mermaid syntax, discarding");
         this.emit("artefact-error", { artefactType, error: "Generated invalid diagram syntax" });
         return;
       }
@@ -337,7 +340,7 @@ export class GenerationOrchestrator {
       this.emit("artefact-complete", { artefactType, content: processed });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Generation failed";
-      console.error(`[generator:${artefactType}] Error:`, err);
+      log.error({ err, artefactType }, "diagram generator error");
       this.emit("artefact-error", {
         artefactType,
         error: message,

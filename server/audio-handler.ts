@@ -5,6 +5,9 @@ import { ContextManager } from "./context-manager";
 import { GenerationOrchestrator } from "./generation-orchestrator";
 import { insertChunk } from "./db/repositories/transcripts";
 import { insertDocument } from "./db/repositories/documents";
+import { logger } from "./logger";
+
+const log = logger.child({ module: "audio" });
 
 interface ParticipantStream {
   socketId: string;
@@ -39,7 +42,7 @@ export class AudioHandler {
   start() {
     this.deepgramKey = process.env.DEEPGRAM_API_KEY ?? null;
     if (!this.deepgramKey) {
-      console.error("[audio] DEEPGRAM_API_KEY not set");
+      log.error("DEEPGRAM_API_KEY not set");
       this.emit("error", "Transcription service not configured");
     }
   }
@@ -54,7 +57,7 @@ export class AudioHandler {
     this.participants.set(socketId, { socketId, speakerName, deepgramWs });
     this.accumulator.addParticipant(socketId);
 
-    console.log(`[audio] Participant ${socketId} (${speakerName}) added (${this.participants.size} total)`);
+    log.info({ socketId, speakerName, total: this.participants.size }, "participant added");
   }
 
   removeParticipant(socketId: string) {
@@ -68,7 +71,7 @@ export class AudioHandler {
     this.participants.delete(socketId);
     this.accumulator.removeParticipant(socketId);
 
-    console.log(`[audio] Participant ${socketId} removed (${this.participants.size} total)`);
+    log.info({ socketId, total: this.participants.size }, "participant removed");
   }
 
   handleAudio(socketId: string, data: Buffer) {
@@ -151,7 +154,7 @@ export class AudioHandler {
     });
 
     ws.on("open", () => {
-      console.log(`[audio] Deepgram stream open for ${socketId}`);
+      log.info({ socketId }, "Deepgram stream open");
     });
 
     ws.on("message", (data: unknown) => {
@@ -177,11 +180,11 @@ export class AudioHandler {
     });
 
     ws.on("error", (err) => {
-      console.error(`[audio] Deepgram error for ${socketId}:`, err);
+      log.error({ err, socketId }, "Deepgram error");
     });
 
     ws.on("close", () => {
-      console.log(`[audio] Deepgram stream closed for ${socketId}`);
+      log.info({ socketId }, "Deepgram stream closed");
     });
 
     return ws;

@@ -3,6 +3,9 @@ import { getProviderForGenerator } from "./llm/config";
 import { getArtefacts, upsertArtefact, deleteDiagramArtefacts, deleteArtefact } from "./db/repositories/artefacts";
 import { getChunks } from "./db/repositories/transcripts";
 import { getDocuments } from "./db/repositories/documents";
+import { logger } from "./logger";
+
+const log = logger.child({ module: "context" });
 
 const VERBATIM_WINDOW_MS = 5 * 60 * 1000;
 const SUMMARISE_INTERVAL_MS = 5 * 60 * 1000;
@@ -23,7 +26,7 @@ export class ContextManager {
 
   constructor(projectId: string, meetingId: string) {
     this.projectId = projectId;
-    this.hydrate(meetingId).catch(console.error);
+    this.hydrate(meetingId).catch((err) => log.error({ err }, "hydration failed"));
   }
 
   private async hydrate(meetingId: string) {

@@ -11,6 +11,9 @@ import { MeetingManager } from "./meeting-manager";
 import { getMeeting } from "./db/repositories/meetings";
 import { getProject } from "./db/repositories/projects";
 import { initDb } from "./db/connection";
+import { logger } from "./logger";
+
+const log = logger.child({ module: "io" });
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = "localhost";
@@ -89,7 +92,7 @@ initDb().then(() => app.prepare()).then(() => {
       return;
     }
 
-    console.log(`[io] ${role || "producer"} connected: ${socket.id} → meeting ${meetingId}`);
+    log.info({ role: role || "producer", socketId: socket.id, meetingId }, "connected");
 
     if (role === "viewer") {
       meetingManager.joinAsViewer(socket, project.id, meetingId);
@@ -104,6 +107,6 @@ initDb().then(() => app.prepare()).then(() => {
 
   const protocol = useHttps ? "https" : "http";
   server.listen(port, () => {
-    console.log(`> Ready on ${protocol}://${hostname}:${port}`);
+    log.info({ protocol, hostname, port }, "server ready");
   });
 });

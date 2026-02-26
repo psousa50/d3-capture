@@ -4,6 +4,7 @@ import { endMeeting } from "./db/repositories/meetings";
 import { getChunks, updateChunk, deleteChunk } from "./db/repositories/transcripts";
 import { getArtefacts } from "./db/repositories/artefacts";
 import { getDocuments, deleteDocument } from "./db/repositories/documents";
+import { logger } from "./logger";
 
 const DISCONNECT_GRACE_MS = 30_000;
 
@@ -31,7 +32,7 @@ export class MeetingManager {
     if (active.disconnectTimer) {
       clearTimeout(active.disconnectTimer);
       active.disconnectTimer = null;
-      console.log(`[meeting:${meetingId}] Reconnection, cancelled shutdown timer`);
+      logger.child({ module: "meeting", meetingId }).info("reconnection, cancelled shutdown timer");
     }
 
     active.producers.set(socket.id, socket.data.userName ?? null);
@@ -39,17 +40,18 @@ export class MeetingManager {
     socket.data.meetingId = meetingId;
     socket.data.role = "producer";
 
-    this.sendSnapshot(socket, meetingId, projectId).catch(console.error);
+    const log = logger.child({ module: "meeting", meetingId });
+    this.sendSnapshot(socket, meetingId, projectId).catch((err) => log.error({ err }, "snapshot failed"));
     this.broadcastPresence(active);
 
     socket.on("start-recording", () => {
       active.handler.addParticipant(socket.id, socket.data.userName);
-      console.log(`[meeting:${meetingId}] Recording started by ${socket.id}`);
+      log.info({ socketId: socket.id }, "recording started");
     });
 
     socket.on("stop-recording", () => {
       active.handler.removeParticipant(socket.id);
-      console.log(`[meeting:${meetingId}] Recording stopped by ${socket.id}`);
+      log.info({ socketId: socket.id }, "recording stopped");
     });
 
     socket.on("audio-data", (data: ArrayBuffer) => {
@@ -74,18 +76,18 @@ export class MeetingManager {
 
     socket.on("add-diagram", (data: { type: string; renderer?: "mermaid" | "html" }) => {
       if (!data?.type) return;
-      console.log(`[meeting:${meetingId}] Add diagram (${data.type}) requested by ${socket.id}`);
+      log.info({ diagram: data.type, socketId: socket.id }, "add diagram requested");
       active.handler.addDiagram(data.type, data.renderer ?? "mermaid");
     });
 
     socket.on("regenerate-diagrams", () => {
-      console.log(`[meeting:${meetingId}] Diagram regeneration (all) requested by ${socket.id}`);
+      log.info({ socketId: socket.id }, "diagram regeneration (all) requested");
       active.handler.regenerateDiagrams();
     });
 
     socket.on("regenerate-diagram", (data: { type: string; renderer?: "mermaid" | "html" }) => {
       if (!data?.type) return;
-      console.log(`[meeting:${meetingId}] Diagram regeneration (${data.type}) requested by ${socket.id}`);
+      log.info({ diagram: data.type, socketId: socket.id }, "diagram regeneration requested");
       active.handler.regenerateSingleDiagram(data.type, data.renderer ?? "mermaid");
     });
 
@@ -100,7 +102,7 @@ export class MeetingManager {
       this.io.to(room).emit("document-deleted", { id: data.id });
     });
 
-    console.log(`[meeting:${meetingId}] Producer joined: ${socket.id} (${active.producers.size} total)`);
+    log.info({ socketId: socket.id, total: active.producers.size }, "producer joined");
   }
 
   joinAsViewer(socket: Socket, projectId: string, meetingId: string) {
@@ -115,10 +117,11 @@ export class MeetingManager {
       active.viewers.set(socket.id, socket.data.userName ?? null);
     }
 
-    this.sendSnapshot(socket, meetingId, projectId).catch(console.error);
+    const viewerLog = logger.child({ module: "meeting", meetingId });
+    this.sendSnapshot(socket, meetingId, projectId).catch((err) => viewerLog.error({ err }, "snapshot failed"));
     if (active) this.broadcastPresence(active);
 
-    console.log(`[meeting:${meetingId}] Viewer joined: ${socket.id}`);
+    viewerLog.info({ socketId: socket.id }, "viewer joined");
   }
 
   handleDisconnect(socket: Socket) {
@@ -133,18 +136,19 @@ export class MeetingManager {
       active.producers.delete(socket.id);
       active.handler.removeParticipant(socket.id);
       this.broadcastPresence(active);
-      console.log(`[meeting:${meetingId}] Producer left: ${socket.id} (${active.producers.size} remaining)`);
+      const dcLog = logger.child({ module: "meeting", meetingId });
+      dcLog.info({ socketId: socket.id, remaining: active.producers.size }, "producer left");
 
       if (active.producers.size === 0) {
-        console.log(`[meeting:${meetingId}] No producers left, starting ${DISCONNECT_GRACE_MS}ms grace period`);
+        dcLog.info({ graceMs: DISCONNECT_GRACE_MS }, "no producers left, starting grace period");
         active.disconnectTimer = setTimeout(() => {
-          this.shutdownMeeting(meetingId).catch(console.error);
+          this.shutdownMeeting(meetingId).catch((err) => dcLog.error({ err }, "shutdown failed"));
         }, DISCONNECT_GRACE_MS);
       }
     } else {
       active.viewers.delete(socket.id);
       this.broadcastPresence(active);
-      console.log(`[meeting:${meetingId}] Viewer left: ${socket.id}`);
+      logger.child({ module: "meeting", meetingId }).info({ socketId: socket.id }, "viewer left");
     }
   }
 
@@ -203,7 +207,7 @@ export class MeetingManager {
     const active = this.meetings.get(meetingId);
     if (!active) return;
 
-    console.log(`[meeting:${meetingId}] Shutting down`);
+    logger.child({ module: "meeting", meetingId }).info("shutting down");
     active.handler.stop();
     await endMeeting(meetingId);
     this.meetings.delete(meetingId);
