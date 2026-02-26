@@ -12,9 +12,18 @@ Rules:
 - If the conversation is small talk, greetings, or filler ("yeah", "makes sense", "ok"), return an empty array
 ${typeLines}
 - For existing diagram subtypes (e.g. "diagram:wireframe"), return the exact key as listed
-- When someone explicitly requests a NEW diagram type that does not exist yet (e.g. "we should have a gantt chart", "can we get a mind map", "let's add a sequence diagram"), return "diagram:new:{type}" where {type} is a short lowercase hyphenated name (e.g. "diagram:new:gantt", "diagram:new:mind-map", "diagram:new:wireframe")
-- Only create new diagrams when there is clear intent — not just because a diagram type is mentioned in passing
+
+Existing diagram updates:
+- Only return an existing diagram subtype (e.g. "diagram:sequence") when the conversation contains new information relevant to THAT SPECIFIC diagram type
+- Do NOT return an existing diagram for update just because someone requested a different diagram type — that is a new diagram, not an update
+
+New diagram creation:
+You may suggest creating a NEW diagram when the conversation contains enough concrete detail that a diagram would genuinely aid understanding. Return "diagram:new:{type}" where {type} is a short lowercase hyphenated name (e.g. "diagram:new:er", "diagram:new:sequence", "diagram:new:flowchart", "diagram:new:wireframe").
+- Be conservative — only suggest a diagram when there is substantial information to populate it (entities and relationships for ER, clear steps for sequence/flowchart, UI elements for wireframe)
+- Prefer fewer diagrams over many — one well-justified diagram is better than three speculative ones
+- Do not suggest a diagram type that already exists in the available types list
+- Also create diagrams when someone explicitly asks for one (e.g. "I'd like a C4 diagram" → "diagram:new:c4")
 
 Respond with ONLY a JSON array of artefact type strings. No markdown, no explanation.
-Examples: ["spec", "diagram:wireframe"] or ["stories"] or ["diagram:new:gantt"] or []`;
+Examples: ["spec", "diagram:wireframe"] or ["stories"] or ["diagram:new:er"] or []`;
 }
