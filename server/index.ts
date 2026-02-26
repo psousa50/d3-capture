@@ -6,6 +6,7 @@ import { join } from "path";
 import next from "next";
 import { parse } from "url";
 import { Server } from "socket.io";
+import { getToken } from "next-auth/jwt";
 import { MeetingManager } from "./meeting-manager";
 import { getMeeting } from "./db/repositories/meetings";
 import { getProject } from "./db/repositories/projects";
@@ -14,7 +15,7 @@ import { initDb } from "./db/connection";
 const dev = process.env.NODE_ENV !== "production";
 const hostname = "localhost";
 const port = parseInt(process.env.PORT || "3000", 10);
-const authSecret = process.env.AUTH_SECRET;
+const nextAuthSecret = process.env.NEXTAUTH_SECRET;
 
 const certPath = join(__dirname, "..", "certs", "cert.pem");
 const keyPath = join(__dirname, "..", "certs", "key.pem");
@@ -40,13 +41,25 @@ initDb().then(() => app.prepare()).then(() => {
     maxHttpBufferSize: 1e6,
   });
 
-  if (authSecret) {
-    io.use((socket, next) => {
-      const password = socket.handshake.auth?.password;
-      if (password !== authSecret) {
-        return next(new Error("Authentication failed"));
+  if (nextAuthSecret) {
+    io.use(async (socket, next) => {
+      try {
+        const cookieHeader = socket.handshake.headers.cookie ?? "";
+        const cookies: Record<string, string> = {};
+        cookieHeader.split(";").forEach((c) => {
+          const [key, ...val] = c.trim().split("=");
+          if (key) cookies[key] = val.join("=");
+        });
+        const token = await getToken({
+          req: { cookies, headers: socket.handshake.headers } as any,
+          secret: nextAuthSecret,
+          secureCookie: process.env.NEXTAUTH_URL?.startsWith("https://") ?? false,
+        });
+        if (!token) return next(new Error("Authentication failed"));
+        next();
+      } catch {
+        next(new Error("Authentication failed"));
       }
-      next();
     });
   }
 

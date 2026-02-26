@@ -43,15 +43,8 @@ export class MeetingSocket {
 
   connect(meetingId: string, role: "producer" | "viewer" = "producer"): Promise<void> {
     return new Promise((resolve, reject) => {
-      const raw = document.cookie
-        .split("; ")
-        .find((c) => c.startsWith("auth-token="))
-        ?.split("=").slice(1).join("=") ?? "";
-      const token = decodeURIComponent(raw);
-
       this.socket = io({
         query: { meetingId, role },
-        auth: { password: token },
         transports: ["websocket"],
         reconnection: true,
         reconnectionAttempts: 10,

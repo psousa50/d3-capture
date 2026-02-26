@@ -38,12 +38,14 @@ src/
 ├── app/
 │   ├── layout.tsx               Root layout, dark theme (class="dark"), Geist fonts
 │   ├── page.tsx                 Dashboard: project list, create/delete
-│   ├── login/page.tsx           Password auth form
+│   ├── login/page.tsx           Google OAuth sign-in page
 │   ├── projects/[projectId]/
 │   │   ├── page.tsx             Project detail: meeting list, aggregated artefacts
 │   │   └── meetings/[meetingId]/
 │   │       └── page.tsx         Live meeting: recording, transcript, streaming artefacts
-│   └── api/                     REST routes for project/meeting CRUD + auth
+│   └── api/
+│       ├── auth/[...nextauth]/  NextAuth.js Google OAuth handlers (catch-all route)
+│       └── projects/            REST routes for project/meeting CRUD
 ├── components/
 │   ├── ArtefactTabs.tsx         Tab interface switching between diagrams, spec, stories, documents
 │   ├── DiagramRenderer.tsx      Mermaid rendering with dark theme
@@ -58,7 +60,7 @@ src/
 │   ├── use-meeting.ts           Main hook: Socket connection, audio capture, all meeting state
 │   ├── socket-client.ts         MeetingSocket class: Socket.IO wrapper with reconnection (10 attempts)
 │   └── audio-capture.ts         Web Audio API: mic → PCM16 → chunks via ScriptProcessorNode
-└── middleware.ts                Auth guard: cookie check, redirects to /login
+└── middleware.ts                NextAuth `withAuth` guard: protects all routes, redirects to /login
 ```
 
 ## Data flow
@@ -94,7 +96,7 @@ projects (id, name, created_at)
 ## API surface
 
 **REST** (Next.js API routes):
-- `POST /api/auth` — password auth, sets cookie
+- `GET/POST /api/auth/[...nextauth]` — NextAuth.js Google OAuth handlers
 - `GET/POST /api/projects` — list/create projects
 - `GET/DELETE /api/projects/[projectId]` — get (with artefacts)/delete project
 - `GET/POST /api/projects/[projectId]/meetings` — list/create meetings
@@ -122,7 +124,7 @@ Provider interface (`LLMProvider.stream()`) with four implementations. Per-gener
 
 ## Auth
 
-Password-based: `AUTH_SECRET` env var. Cookie `auth-token` (7 day expiry). Next.js middleware protects all routes except `/login` and `/api/auth`. Socket.IO checks `auth.password` in handshake.
+Google OAuth via NextAuth.js v4. `NEXTAUTH_SECRET` + `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` env vars. Optional `ALLOWED_EMAIL_DOMAIN` to restrict sign-in to a single email domain. Next.js middleware (`withAuth`) protects all routes, redirecting to `/login`. Socket.IO verifies the `next-auth.session-token` cookie from the WebSocket upgrade headers using `getToken` from `next-auth/jwt`.
 
 ## Key patterns
 
