@@ -28,11 +28,24 @@ server/
 │   └── repositories/            CRUD per entity: projects, meetings, transcripts, artefacts, documents
 └── ws.d.ts
 
-generators/
-├── types.ts                     Generator interface: type + generate(options) → AsyncIterable<string>
-├── spec.ts                      Spec generation (create/update prompts)
-├── stories.ts                   User story generation
-└── diagram.ts                   Diagram planning + per-type rendering (inline in orchestrator)
+modules/
+├── types.ts                     Generator, ArtefactModuleDefinition, DiagramModuleDefinition interfaces
+├── registry.ts                  Central module registry: getTextModules(), getDiagramModule(), triage helpers
+├── spec/
+│   ├── prompts.ts               Spec create/update prompt templates (pure strings, zero imports)
+│   ├── generator.ts             SpecGenerator class
+│   └── index.ts                 Module definition (type, description, aliases, generator)
+├── stories/
+│   ├── prompts.ts               Stories create/update prompt templates
+│   ├── generator.ts             StoryGenerator class
+│   └── index.ts                 Module definition
+├── diagram/
+│   ├── prompts.ts               Diagram prompts (planning, mermaid create/update, html create/update)
+│   ├── post-process.ts          Mermaid validation, code fence stripping, style removal, ER fix
+│   ├── generator.ts             planDiagrams(), generateDiagram(), getDiagramProvider()
+│   └── index.ts                 Module definition
+└── triage/
+    └── prompts.ts               buildTriagePrompt() — dynamic from module descriptions
 
 src/
 ├── app/
@@ -120,7 +133,7 @@ projects (id, name, created_at)
 
 Provider interface (`LLMProvider.stream()`) with four implementations. Per-generator routing via env vars:
 - `LLM_DEFAULT_PROVIDER` (default: anthropic)
-- `LLM_PROVIDER_{TRIAGE|SPEC|STORIES|DIAGRAM}` — optional overrides
+- `LLM_PROVIDER_{NAME}` — optional per-module overrides (e.g. `LLM_PROVIDER_SPEC`, `LLM_PROVIDER_STORIES`)
 
 ## Auth
 
@@ -132,5 +145,6 @@ Google OAuth via NextAuth.js v4. `NEXTAUTH_SECRET` + `GOOGLE_CLIENT_ID` + `GOOGL
 - **Streaming-first** — artefacts stream via `artefact-chunk` events, UI shows live generation
 - **Single-at-a-time generation queue** — prevents overlapping LLM calls
 - **Per-participant audio streams** — each producer gets own Deepgram WebSocket
+- **Module system** — each artefact type is a self-contained module in `modules/` with prompts, generator, and definition; registry-driven discovery
 - **Repository pattern** — one module per DB entity in `server/db/repositories/`
 - **Room-based broadcasting** — Socket.IO rooms per meeting (`meeting:{id}`)

@@ -1,34 +1,12 @@
 import { getProviderForGenerator } from "./llm/config";
-
-const SYSTEM_PROMPT = `You are a triage classifier for a meeting artefact generator. Given new meeting conversation and a list of artefact types, decide which artefacts need updating.
-
-Rules:
-- Only select artefacts where the new conversation is directly relevant
-- If the conversation is small talk, greetings, or filler ("yeah", "makes sense", "ok"), return an empty array
-- "spec" = technical specification document
-- "stories" = user stories with acceptance criteria
-- "diagram" = technical diagrams (architecture, ER, sequence, flowcharts, wireframes)
-- When specific diagram subtypes are listed (e.g. "diagram:wireframe"), return those exact keys instead of "diagram"
-- Only return "diagram" when no subtypes are listed or when ALL diagrams are affected
-
-Respond with ONLY a JSON array of artefact type strings. No markdown, no explanation.
-Examples: ["spec", "diagram:wireframe"] or ["stories"] or []`;
-
-const NORMALISE_MAP: Record<string, string> = {
-  diagrams: "diagram",
-  diagram: "diagram",
-  specifications: "spec",
-  specification: "spec",
-  spec: "spec",
-  stories: "stories",
-  "user stories": "stories",
-  "user-stories": "stories",
-};
+import { buildTriagePrompt } from "../modules/triage/prompts";
+import { getTriageDescriptions, getNormaliseMap } from "../modules/registry";
 
 function normalise(raw: string, artefactTypes: string[]): string | null {
   const key = raw.toLowerCase().trim();
   if (artefactTypes.includes(key)) return key;
-  return NORMALISE_MAP[key] ?? null;
+  const map = getNormaliseMap();
+  return map[key] ?? null;
 }
 
 export async function triageArtefacts(
@@ -36,10 +14,11 @@ export async function triageArtefacts(
   artefactTypes: string[],
 ): Promise<string[]> {
   const provider = getProviderForGenerator("triage");
+  const systemPrompt = buildTriagePrompt(getTriageDescriptions());
 
   let json = "";
   for await (const chunk of provider.stream({
-    system: SYSTEM_PROMPT,
+    system: systemPrompt,
     messages: [
       {
         role: "user",

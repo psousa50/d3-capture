@@ -5,20 +5,19 @@ import { OpenAICompatibleProvider } from "./openai-compatible";
 import { ClaudeCodeProvider } from "./claude-code";
 
 type ProviderName = "anthropic" | "openai" | "groq" | "claude-code";
-type GeneratorName = "diagram" | "spec" | "stories" | "triage";
 
 interface LLMConfig {
   defaultProvider: ProviderName;
-  generators: Partial<Record<GeneratorName, ProviderName>>;
+  generators: Record<string, ProviderName>;
 }
 
-function readGeneratorOverrides(): Partial<Record<GeneratorName, ProviderName>> {
-  const overrides: Partial<Record<GeneratorName, ProviderName>> = {};
-  const names: GeneratorName[] = ["triage", "spec", "stories", "diagram"];
-  for (const name of names) {
-    const envKey = `LLM_PROVIDER_${name.toUpperCase()}`;
-    const value = process.env[envKey] as ProviderName | undefined;
-    if (value) overrides[name] = value;
+function readGeneratorOverrides(): Record<string, ProviderName> {
+  const overrides: Record<string, ProviderName> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (key.startsWith("LLM_PROVIDER_") && value) {
+      const generatorName = key.slice("LLM_PROVIDER_".length).toLowerCase();
+      overrides[generatorName] = value as ProviderName;
+    }
   }
   return overrides;
 }
@@ -63,13 +62,13 @@ function createProvider(name: ProviderName): LLMProvider {
   }
 }
 
-export function getProviderForGenerator(generator: GeneratorName): LLMProvider {
+export function getProviderForGenerator(generator: string): LLMProvider {
   const providerName = config.generators[generator] ?? config.defaultProvider;
   console.log(`[llm] ${generator} → ${providerName}`);
   return getOrCreateProvider(providerName);
 }
 
-export function setGeneratorProvider(generator: GeneratorName, provider: ProviderName) {
+export function setGeneratorProvider(generator: string, provider: ProviderName) {
   config.generators[generator] = provider;
   providers.delete(provider);
 }
