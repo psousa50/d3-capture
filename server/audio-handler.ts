@@ -37,6 +37,7 @@ export class AudioHandler {
       this.contextManager.addTranscript(transcript);
       this.orchestrator.trigger(transcript);
       this.orchestrator.triggerGuidance();
+      this.orchestrator.triggerAssistant(transcript.fullText);
     });
   }
 
@@ -120,6 +121,7 @@ export class AudioHandler {
     this.contextManager.addTranscript(transcript);
     this.orchestrator.trigger(transcript);
     this.orchestrator.triggerGuidance();
+    this.orchestrator.triggerAssistant(text);
   }
 
   async handleTranscriptImport(text: string) {

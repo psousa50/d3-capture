@@ -15,6 +15,7 @@ server/
 ├── context-manager.ts           Two-tier context window (recent 5min verbatim + older summarised), builds LLM prompts, persists artefacts
 ├── generation-orchestrator.ts   Triage → parallel text generation (spec+stories) → auto-update existing diagrams, on-demand diagram creation, single-at-a-time queue
 ├── triage.ts                    LLM classifier deciding which artefacts are affected by new transcript, normalises output
+├── web-search.ts                Tavily web search wrapper with timeout (3s), used by assistant module
 ├── stt/
 │   ├── types.ts                 STTProvider interface: createStream(options) → STTStream
 │   ├── config.ts                Factory with provider routing via STT_PROVIDER env var
@@ -53,6 +54,9 @@ modules/
 ├── guidance/
 │   ├── prompts/system.md        System prompt: analyse conversation, output JSON array of questions/suggestions
 │   └── generator.ts             generateGuidanceItems() — collects full LLM response, parses JSON, returns structured items
+├── assistant/
+│   ├── prompts/system.md        Nova system prompt: concise meeting participant, uses web_search tool when needed
+│   └── generator.ts             mentionsNova() trigger check, runAssistant() agent loop with Anthropic tool use
 └── triage/
     └── prompts.ts               buildTriagePrompt() — dynamic from module descriptions
 
@@ -74,7 +78,7 @@ src/
 │   ├── WireframeRenderer.tsx    HTML iframe sandbox for wireframes
 │   ├── MarkdownRenderer.tsx     react-markdown with prose styling
 │   ├── GuidancePanel.tsx        Collapsible right panel: AI-generated questions/suggestions with resolve toggle
-│   ├── TranscriptPanel.tsx      Scrollable transcript with edit/delete per entry
+│   ├── TranscriptPanel.tsx      Scrollable transcript with edit/delete per entry, Nova (AI) entries in sky-blue
 │   ├── MeetingControls.tsx      Record/stop, elapsed timer, text input, connection status
 │   ├── PresenceIndicator.tsx    Active participant avatars with role badges
 │   ├── TranscriptImportModal.tsx  Paste external transcripts
@@ -95,10 +99,12 @@ Audio frames → per-participant STT stream (via STTProvider) → transcript chu
     ↓
 TranscriptAccumulator (silence 4s + rate limit 15s) → callback
     ↓
-ContextManager.addTranscript() + GenerationOrchestrator.trigger() + triggerGuidance()
-    ↓                                                                    ↓
-triageArtefacts() → decides affected types                   Guidance: LLM outputs JSON
-    (spec, stories, existing diagram subtypes)               → parse → persist → broadcast
+ContextManager.addTranscript() + GenerationOrchestrator.trigger() + triggerGuidance() + triggerAssistant()
+    ↓                                                                    ↓                     ↓
+triageArtefacts() → decides affected types                   Guidance: LLM outputs JSON   Nova: if "Nova" mentioned
+    (spec, stories, existing diagram subtypes)               → parse → persist → broadcast  → Anthropic tool-use agent
+                                                                                            → optional web search
+                                                                                            → answer as transcript entry
     ↓
 Text generators run in parallel (spec + stories) → stream chunks to room
     ↓
@@ -152,6 +158,8 @@ Provider interface (`LLMProvider.stream()`) with four implementations. Per-gener
 - `LLM_DEFAULT_PROVIDER` (default: anthropic)
 - `LLM_PROVIDER_{NAME}` — optional per-module overrides (e.g. `LLM_PROVIDER_SPEC`, `LLM_PROVIDER_STORIES`)
 
+The assistant module (Nova) uses the Anthropic SDK directly for tool use (web search). Model configurable via `ASSISTANT_MODEL` env var. Web search via Tavily (`TAVILY_API_KEY`).
+
 ## Auth
 
 Google OAuth via NextAuth.js v4. `NEXTAUTH_SECRET` + `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` env vars. Optional `ALLOWED_EMAIL_DOMAIN` to restrict sign-in to a single email domain. Next.js middleware (`withAuth`) protects all routes, redirecting to `/login`. Socket.IO verifies the `next-auth.session-token` cookie from the WebSocket upgrade headers using `getToken` from `next-auth/jwt`.
@@ -166,3 +174,4 @@ Google OAuth via NextAuth.js v4. `NEXTAUTH_SECRET` + `GOOGLE_CLIENT_ID` + `GOOGL
 - **Repository pattern** — one module per DB entity in `server/db/repositories/`
 - **Room-based broadcasting** — Socket.IO rooms per meeting (`meeting:{id}`)
 - **Guidance runs independently** — not gated by the artefact generation lock; lightweight JSON output parsed server-side, meeting-scoped
+- **Nova (AI assistant) runs independently** — triggered by name mention ("Nova"), uses Anthropic tool-use agent loop with web search; responses stored as transcript chunks (speaker="Nova")

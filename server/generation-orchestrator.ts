@@ -10,6 +10,8 @@ import { AccumulatedTranscript } from "./transcript-accumulator";
 import { logger } from "./logger";
 import { generateGuidanceItems } from "../modules/guidance/generator";
 import { getGuidanceItems, insertGuidanceItems, resolveGuidanceItem } from "./db/repositories/guidance";
+import { mentionsNova, runAssistant } from "../modules/assistant/generator";
+import { insertChunk } from "./db/repositories/transcripts";
 
 const log = logger.child({ module: "orchestrator" });
 
@@ -30,6 +32,7 @@ export class GenerationOrchestrator {
   private generating = false;
   private pendingTranscript: AccumulatedTranscript | null = null;
   private guidanceRunning = false;
+  private assistantRunning = false;
 
   constructor(io: Server, room: string, meetingId: string, contextManager: ContextManager) {
     this.io = io;
@@ -131,6 +134,29 @@ export class GenerationOrchestrator {
       log.error({ err }, "guidance generation failed");
     } finally {
       this.guidanceRunning = false;
+    }
+  }
+
+  async triggerAssistant(latestText: string) {
+    if (!mentionsNova(latestText)) return;
+    if (this.assistantRunning) return;
+    this.assistantRunning = true;
+
+    try {
+      const context = this.contextManager.buildPromptContext("assistant");
+      if (!context.trim()) return;
+
+      const artefactStates = this.contextManager.getArtefactStates();
+      const answer = await runAssistant(context, artefactStates);
+      if (!answer) return;
+
+      const row = await insertChunk(this.meetingId, answer, "Nova", Date.now());
+      this.emit("live-transcript", { id: row.id, text: answer, isFinal: true, speaker: "Nova" });
+      log.info("Nova responded");
+    } catch (err) {
+      log.error({ err }, "assistant generation failed");
+    } finally {
+      this.assistantRunning = false;
     }
   }
 

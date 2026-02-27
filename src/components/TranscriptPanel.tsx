@@ -27,11 +27,17 @@ function speakerIndex(speaker: string | number): number {
     : Array.from(speaker).reduce((acc, c) => acc + c.charCodeAt(0), 0);
 }
 
+function isNova(speaker: string | number): boolean {
+  return speaker === "Nova";
+}
+
 function speakerColour(speaker: string | number): string {
+  if (isNova(speaker)) return "text-sky-400";
   return SPEAKER_COLOURS[speakerIndex(speaker) % SPEAKER_COLOURS.length];
 }
 
 function speakerBgColour(speaker: string | number): string {
+  if (isNova(speaker)) return "bg-sky-500/10";
   return SPEAKER_BG_COLOURS[speakerIndex(speaker) % SPEAKER_BG_COLOURS.length];
 }
 
@@ -52,7 +58,7 @@ function TranscriptEntryRow({
   const [editText, setEditText] = useState(entry.text);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const canManage = entry.id != null && onEdit && onDelete;
+  const canManage = entry.id != null && onEdit && onDelete && !isNova(entry.speaker ?? "");
 
   const handleSave = () => {
     const trimmed = editText.trim();
