@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { DocumentEntry } from "../lib/socket-client";
+
+const ACCEPTED_EXTENSIONS = ".txt,.md,.csv";
 
 export function TranscriptImportModal({
   open,
@@ -19,6 +21,7 @@ export function TranscriptImportModal({
   const nextDefault = `Doc ${Math.max(0, ...documents.map((d) => d.docNumber)) + 1}`;
   const [text, setText] = useState("");
   const [name, setName] = useState(nextDefault);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
@@ -39,6 +42,20 @@ export function TranscriptImportModal({
     if (e.target === e.currentTarget && !loading) onClose();
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const content = reader.result as string;
+      setText(content);
+      const baseName = file.name.replace(/\.[^.]+$/, "");
+      setName(baseName);
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in"
@@ -56,15 +73,35 @@ export function TranscriptImportModal({
           </div>
           <div>
             <h2 className="text-base font-semibold text-zinc-100">Import Document</h2>
-            <p className="text-xs text-zinc-500">Paste a document to generate specs, stories, and diagrams</p>
+            <p className="text-xs text-zinc-500">Paste or upload a document to generate specs, stories, and diagrams</p>
           </div>
         </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={ACCEPTED_EXTENSIONS}
+          onChange={handleFileSelect}
+          className="hidden"
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={loading}
+          className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-zinc-700 bg-zinc-900/30 px-4 py-3 text-sm text-zinc-400 transition-colors hover:border-indigo-500/50 hover:bg-zinc-900/50 hover:text-zinc-300 disabled:opacity-50"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
+          Upload file (.txt, .md, .csv)
+        </button>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Document name"
           disabled={loading}
-          className="mt-5 w-full rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 transition-colors focus:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500/25 disabled:opacity-50"
+          className="mt-3 w-full rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 transition-colors focus:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500/25 disabled:opacity-50"
         />
         <textarea
           value={text}
