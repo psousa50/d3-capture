@@ -14,12 +14,15 @@ export class VoxtralProvider implements STTProvider {
   constructor() {
     const key = process.env.MISTRAL_API_KEY;
     if (!key) throw new Error("MISTRAL_API_KEY not set");
+    log.info({ keyLength: key.length, keySuffix: key.slice(-4) }, "loaded API key");
     this.apiKey = key;
     this.baseUrl = process.env.VOXTRAL_BASE_URL || DEFAULT_BASE_URL;
   }
 
   createStream(options: STTStreamOptions): STTStream {
     const url = `${this.baseUrl}/v1/audio/transcriptions/realtime?model=${MODEL}`;
+
+    log.info({ url }, "connecting");
 
     const ws = new WebSocket(url, {
       headers: { Authorization: `Bearer ${this.apiKey}` },
@@ -34,29 +37,29 @@ export class VoxtralProvider implements STTProvider {
 
     ws.on("message", (raw: unknown) => {
       const data = JSON.parse(String(raw));
+      log.debug({ type: data.type, data }, "message received");
 
       switch (data.type) {
-        case "realtime_transcription_session_created":
+        case "session.created":
           sessionReady = true;
           log.info("session ready");
           options.onOpen();
           break;
 
-        case "transcription_stream_text_delta":
-          buffer += data.delta;
-          options.onTranscript({ text: buffer, isFinal: false });
+        case "transcription.text.delta":
+          buffer += data.text;
           break;
 
-        case "transcription_stream_done":
-          if (buffer) {
-            options.onTranscript({ text: buffer, isFinal: true });
+        case "transcription.done":
+          if (data.text) {
             buffer = "";
+            options.onTranscript({ text: data.text, isFinal: true });
           }
           break;
 
-        case "realtime_transcription_error":
+        case "error":
           log.error({ error: data }, "server error");
-          options.onError(new Error(data.detail?.message || "Voxtral server error"));
+          options.onError(new Error(data.error?.message || "Voxtral server error"));
           break;
       }
     });
@@ -72,19 +75,26 @@ export class VoxtralProvider implements STTProvider {
       options.onClose();
     });
 
+    const flushInterval = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN && sessionReady) {
+        ws.send(JSON.stringify({ type: "input_audio.flush" }));
+      }
+    }, 2000);
+
     return {
       send(audio: Buffer) {
         if (ws.readyState !== WebSocket.OPEN || !sessionReady) return;
         ws.send(
           JSON.stringify({
-            type: "input_audio_buffer.append",
+            type: "input_audio.append",
             audio: audio.toString("base64"),
           })
         );
       },
       close() {
+        clearInterval(flushInterval);
         if (ws.readyState !== WebSocket.OPEN) return;
-        ws.send(JSON.stringify({ type: "input_audio_buffer.commit", final: true }));
+        ws.send(JSON.stringify({ type: "input_audio.end" }));
         ws.close();
       },
     };
