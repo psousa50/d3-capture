@@ -1,10 +1,11 @@
 import { logger } from "../logger";
 import type { STTProvider } from "./types";
 import { DeepgramProvider } from "./deepgram";
+import { VoxtralProvider } from "./voxtral";
 
 const log = logger.child({ module: "stt" });
 
-type STTProviderName = "deepgram";
+type STTProviderName = "deepgram" | "voxtral";
 
 let provider: STTProvider | null = null;
 
@@ -12,6 +13,8 @@ function createProvider(name: STTProviderName): STTProvider {
   switch (name) {
     case "deepgram":
       return new DeepgramProvider();
+    case "voxtral":
+      return new VoxtralProvider();
     default:
       throw new Error(`Unknown STT provider: ${name}`);
   }

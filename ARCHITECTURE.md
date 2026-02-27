@@ -2,7 +2,7 @@
 
 Real-time meeting assistant that transcribes audio, generates specs/stories/diagrams via LLM, and streams results to all participants.
 
-**Stack:** Next.js 16, React 19, Socket.IO 4, PostgreSQL (pg), multi-provider STT (Deepgram), multi-provider LLM (Anthropic/OpenAI/Groq), Tailwind CSS 4, TypeScript strict.
+**Stack:** Next.js 16, React 19, Socket.IO 4, PostgreSQL (pg), multi-provider STT (Deepgram/Voxtral), multi-provider LLM (Anthropic/OpenAI/Groq), Tailwind CSS 4, TypeScript strict.
 
 ## Directory structure
 
@@ -19,6 +19,7 @@ server/
 │   ├── types.ts                 STTProvider interface: createStream(options) → STTStream
 │   ├── config.ts                Factory with provider routing via STT_PROVIDER env var
 │   ├── deepgram.ts              Deepgram WebSocket implementation (default)
+│   ├── voxtral.ts               Mistral Voxtral Realtime implementation
 │   └── index.ts                 Barrel export
 ├── llm/
 │   ├── types.ts                 LLMProvider interface: stream(params) → AsyncIterable<string>
