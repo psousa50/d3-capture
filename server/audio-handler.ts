@@ -1,10 +1,10 @@
-import WebSocket from "ws";
 import type { Server } from "socket.io";
 import { TranscriptAccumulator } from "./transcript-accumulator";
 import { ContextManager } from "./context-manager";
 import { GenerationOrchestrator } from "./generation-orchestrator";
 import { insertChunk } from "./db/repositories/transcripts";
 import { insertDocument } from "./db/repositories/documents";
+import { getSTTProvider, type STTProvider, type STTStream } from "./stt";
 import { logger } from "./logger";
 
 const log = logger.child({ module: "audio" });
@@ -12,7 +12,7 @@ const log = logger.child({ module: "audio" });
 interface ParticipantStream {
   socketId: string;
   speakerName: string;
-  deepgramWs: WebSocket;
+  sttStream: STTStream;
 }
 
 export class AudioHandler {
@@ -24,7 +24,7 @@ export class AudioHandler {
   private orchestrator: GenerationOrchestrator;
   private participants = new Map<string, ParticipantStream>();
   private nextSpeakerIndex = 0;
-  private deepgramKey: string | null = null;
+  private sttProvider: STTProvider | null = null;
 
   constructor(io: Server, room: string, projectId: string, meetingId: string) {
     this.io = io;
@@ -41,21 +41,48 @@ export class AudioHandler {
   }
 
   start() {
-    this.deepgramKey = process.env.DEEPGRAM_API_KEY ?? null;
-    if (!this.deepgramKey) {
-      log.error("DEEPGRAM_API_KEY not set");
+    try {
+      this.sttProvider = getSTTProvider();
+    } catch (err) {
+      log.error({ err }, "STT provider not available");
       this.emit("error", "Transcription service not configured");
     }
   }
 
   addParticipant(socketId: string, userName?: string | null) {
     if (this.participants.has(socketId)) return;
-    if (!this.deepgramKey) return;
+    if (!this.sttProvider) return;
 
     const fallbackIndex = this.nextSpeakerIndex++;
     const speakerName = userName || `Speaker ${fallbackIndex + 1}`;
-    const deepgramWs = this.connectDeepgram(this.deepgramKey, socketId, speakerName);
-    this.participants.set(socketId, { socketId, speakerName, deepgramWs });
+
+    const sttStream = this.sttProvider.createStream({
+      onTranscript: (result) => {
+        this.accumulator.add({
+          text: result.text,
+          isFinal: result.isFinal,
+          speaker: speakerName,
+          timestamp: Date.now(),
+        });
+
+        this.emit("live-transcript", {
+          text: result.text,
+          isFinal: result.isFinal,
+          speaker: speakerName,
+        });
+      },
+      onError: (err) => {
+        log.error({ err, socketId }, "STT stream error");
+      },
+      onOpen: () => {
+        log.info({ socketId }, "STT stream open");
+      },
+      onClose: () => {
+        log.info({ socketId }, "STT stream closed");
+      },
+    });
+
+    this.participants.set(socketId, { socketId, speakerName, sttStream });
     this.accumulator.addParticipant(socketId);
 
     log.info({ socketId, speakerName, total: this.participants.size }, "participant added");
@@ -65,10 +92,7 @@ export class AudioHandler {
     const participant = this.participants.get(socketId);
     if (!participant) return;
 
-    if (participant.deepgramWs.readyState === WebSocket.OPEN) {
-      participant.deepgramWs.close();
-    }
-
+    participant.sttStream.close();
     this.participants.delete(socketId);
     this.accumulator.removeParticipant(socketId);
 
@@ -77,9 +101,7 @@ export class AudioHandler {
 
   handleAudio(socketId: string, data: Buffer) {
     const participant = this.participants.get(socketId);
-    if (participant?.deepgramWs.readyState === WebSocket.OPEN) {
-      participant.deepgramWs.send(data);
-    }
+    participant?.sttStream.send(data);
   }
 
   async handleTextInput(text: string, userName?: string | null) {
@@ -132,65 +154,9 @@ export class AudioHandler {
   stop() {
     this.accumulator.stop();
     for (const participant of this.participants.values()) {
-      if (participant.deepgramWs.readyState === WebSocket.OPEN) {
-        participant.deepgramWs.close();
-      }
+      participant.sttStream.close();
     }
     this.participants.clear();
-  }
-
-  private connectDeepgram(apiKey: string, socketId: string, speakerName: string): WebSocket {
-    const deepgramUrl =
-      "wss://api.deepgram.com/v1/listen?" +
-      new URLSearchParams({
-        model: "nova-2",
-        language: "en",
-        smart_format: "true",
-        punctuate: "true",
-        encoding: "linear16",
-        sample_rate: "16000",
-        channels: "1",
-      }).toString();
-
-    const ws = new WebSocket(deepgramUrl, {
-      headers: { Authorization: `Token ${apiKey}` },
-    });
-
-    ws.on("open", () => {
-      log.info({ socketId }, "Deepgram stream open");
-    });
-
-    ws.on("message", (data: unknown) => {
-      const response = JSON.parse(String(data));
-      const transcript = response.channel?.alternatives?.[0]?.transcript;
-
-      if (transcript) {
-        const isFinal = response.is_final;
-
-        this.accumulator.add({
-          text: transcript,
-          isFinal,
-          speaker: speakerName,
-          timestamp: Date.now(),
-        });
-
-        this.emit("live-transcript", {
-          text: transcript,
-          isFinal,
-          speaker: speakerName,
-        });
-      }
-    });
-
-    ws.on("error", (err) => {
-      log.error({ err, socketId }, "Deepgram error");
-    });
-
-    ws.on("close", () => {
-      log.info({ socketId }, "Deepgram stream closed");
-    });
-
-    return ws;
   }
 
   private emit(event: string, data: unknown) {

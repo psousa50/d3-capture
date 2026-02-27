@@ -2,7 +2,7 @@
 
 Real-time meeting assistant that transcribes audio, generates specs/stories/diagrams via LLM, and streams results to all participants.
 
-**Stack:** Next.js 16, React 19, Socket.IO 4, PostgreSQL (pg), Deepgram (speech-to-text), multi-provider LLM (Anthropic/OpenAI/Groq), Tailwind CSS 4, TypeScript strict.
+**Stack:** Next.js 16, React 19, Socket.IO 4, PostgreSQL (pg), multi-provider STT (Deepgram), multi-provider LLM (Anthropic/OpenAI/Groq), Tailwind CSS 4, TypeScript strict.
 
 ## Directory structure
 
@@ -10,11 +10,16 @@ Real-time meeting assistant that transcribes audio, generates specs/stories/diag
 server/
 ├── index.ts                     Custom HTTP server: Next.js SSR + Socket.IO on same port
 ├── meeting-manager.ts           Active meeting lifecycle, participant join/leave, presence, graceful shutdown (30s grace)
-├── audio-handler.ts             Per-participant Deepgram WebSocket streams, delegates to TranscriptAccumulator
+├── audio-handler.ts             Per-participant STT streams via provider, delegates to TranscriptAccumulator
 ├── transcript-accumulator.ts    Buffers transcript chunks, silence detection (4s), rate-limiting (15s min), DB writes
 ├── context-manager.ts           Two-tier context window (recent 5min verbatim + older summarised), builds LLM prompts, persists artefacts
 ├── generation-orchestrator.ts   Triage → parallel text generation (spec+stories) → auto-update existing diagrams, on-demand diagram creation, single-at-a-time queue
 ├── triage.ts                    LLM classifier deciding which artefacts are affected by new transcript, normalises output
+├── stt/
+│   ├── types.ts                 STTProvider interface: createStream(options) → STTStream
+│   ├── config.ts                Factory with provider routing via STT_PROVIDER env var
+│   ├── deepgram.ts              Deepgram WebSocket implementation (default)
+│   └── index.ts                 Barrel export
 ├── llm/
 │   ├── types.ts                 LLMProvider interface: stream(params) → AsyncIterable<string>
 │   ├── config.ts                Factory with per-generator provider routing via env vars
@@ -85,7 +90,7 @@ src/
 ```
 Producer connects → MeetingManager.joinAsProducer() → creates AudioHandler
     ↓
-Audio frames → per-participant Deepgram WebSocket → transcript chunks
+Audio frames → per-participant STT stream (via STTProvider) → transcript chunks
     ↓
 TranscriptAccumulator (silence 4s + rate limit 15s) → callback
     ↓
@@ -155,7 +160,7 @@ Google OAuth via NextAuth.js v4. `NEXTAUTH_SECRET` + `GOOGLE_CLIENT_ID` + `GOOGL
 - **No external state management** — React hooks + local state only, Socket.IO events drive updates
 - **Streaming-first** — artefacts stream via `artefact-chunk` events, UI shows live generation
 - **Single-at-a-time generation queue** — prevents overlapping LLM calls
-- **Per-participant audio streams** — each producer gets own Deepgram WebSocket
+- **Per-participant audio streams** — each producer gets own STT stream via pluggable provider (`STT_PROVIDER` env var, default: deepgram)
 - **Module system** — each artefact type is a self-contained module in `modules/` with prompts, generator, and definition; registry-driven discovery
 - **Repository pattern** — one module per DB entity in `server/db/repositories/`
 - **Room-based broadcasting** — Socket.IO rooms per meeting (`meeting:{id}`)
