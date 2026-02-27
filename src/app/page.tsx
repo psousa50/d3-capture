@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ConfirmModal } from "../components/ConfirmModal";
 
 interface Project {
@@ -57,6 +58,7 @@ export default function Dashboard() {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
     fetch("/api/projects")
@@ -84,9 +86,7 @@ export default function Dashboard() {
       body: JSON.stringify({ name }),
     });
     const project = await res.json();
-    setProjects((prev) => [project, ...prev]);
-    setNewName("");
-    setCreating(false);
+    router.push(`/projects/${project.id}`);
   };
 
   return (
