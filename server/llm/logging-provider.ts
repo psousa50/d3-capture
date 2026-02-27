@@ -1,7 +1,7 @@
 import { LLMProvider, StreamParams } from "./types";
-import { logger } from "../logger";
+import { promptLogger } from "../logger";
 
-const log = logger.child({ module: "llm" });
+const log = promptLogger.child({ module: "llm" });
 
 export class LoggingProvider implements LLMProvider {
   constructor(

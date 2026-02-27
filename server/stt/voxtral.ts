@@ -1,8 +1,8 @@
 import WebSocket from "ws";
-import { logger } from "../logger";
+import { voxtralLogger } from "../logger";
 import type { STTProvider, STTStream, STTStreamOptions } from "./types";
 
-const log = logger.child({ module: "stt:voxtral" });
+const log = voxtralLogger.child({ module: "stt:voxtral" });
 
 const DEFAULT_BASE_URL = "wss://api.mistral.ai";
 const MODEL = "voxtral-mini-transcribe-realtime-2602";
@@ -75,15 +75,19 @@ export class VoxtralProvider implements STTProvider {
       options.onClose();
     });
 
+    let hasPendingAudio = false;
+
     const flushInterval = setInterval(() => {
-      if (ws.readyState === WebSocket.OPEN && sessionReady) {
+      if (ws.readyState === WebSocket.OPEN && sessionReady && hasPendingAudio) {
         ws.send(JSON.stringify({ type: "input_audio.flush" }));
+        hasPendingAudio = false;
       }
     }, 2000);
 
     return {
       send(audio: Buffer) {
         if (ws.readyState !== WebSocket.OPEN || !sessionReady) return;
+        hasPendingAudio = true;
         ws.send(
           JSON.stringify({
             type: "input_audio.append",
