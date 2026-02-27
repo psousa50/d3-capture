@@ -124,9 +124,9 @@ export class AudioHandler {
     this.orchestrator.triggerAssistant(text);
   }
 
-  async handleTranscriptImport(text: string) {
-    const doc = await insertDocument(this.meetingId, text);
-    this.emit("document-added", { id: doc.id, content: doc.content, createdAt: doc.created_at });
+  async handleTranscriptImport(text: string, name?: string) {
+    const doc = await insertDocument(this.meetingId, text, name);
+    this.emit("document-added", { id: doc.id, content: doc.content, createdAt: doc.created_at, name: doc.name, docNumber: doc.doc_number });
 
     const now = Date.now();
     const transcript = {

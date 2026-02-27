@@ -121,7 +121,7 @@ All artefacts persisted via upsertArtefact() + broadcast to room
 projects (id, name, created_at)
     └── meetings (id, project_id, started_at, ended_at, status, pending_transcript)
             ├── transcript_chunks (id auto, meeting_id, text, speaker, timestamp)
-            ├── documents (id, meeting_id, content, created_at)
+            ├── documents (id, meeting_id, content, created_at, name, doc_number)
             └── guidance_items (id, meeting_id, type, content, resolved, created_at) ON DELETE CASCADE
     └── artefacts (id, project_id, type, content, updated_at) UNIQUE(project_id, type)
 ```

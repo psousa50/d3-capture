@@ -6,19 +6,28 @@ export interface DocumentRow {
   meeting_id: string;
   content: string;
   created_at: number;
+  name: string;
+  doc_number: number;
 }
 
-export async function insertDocument(meetingId: string, content: string): Promise<DocumentRow> {
+export async function insertDocument(meetingId: string, content: string, name?: string): Promise<DocumentRow> {
   const pool = getPool();
   const id = randomUUID();
   const created_at = Date.now();
 
-  await pool.query(
-    "INSERT INTO documents (id, meeting_id, content, created_at) VALUES ($1, $2, $3, $4)",
-    [id, meetingId, content, created_at]
+  const { rows: [{ next_num }] } = await pool.query<{ next_num: number }>(
+    "SELECT COALESCE(MAX(doc_number), 0) + 1 AS next_num FROM documents WHERE meeting_id = $1",
+    [meetingId]
   );
 
-  return { id, meeting_id: meetingId, content, created_at };
+  const docName = name?.trim() || `Doc ${next_num}`;
+
+  await pool.query(
+    "INSERT INTO documents (id, meeting_id, content, created_at, name, doc_number) VALUES ($1, $2, $3, $4, $5, $6)",
+    [id, meetingId, content, created_at, docName, next_num]
+  );
+
+  return { id, meeting_id: meetingId, content, created_at, name: docName, doc_number: next_num };
 }
 
 export async function getDocuments(meetingId: string): Promise<DocumentRow[]> {

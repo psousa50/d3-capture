@@ -92,9 +92,11 @@ export class MeetingManager {
       active.handler.regenerateSingleDiagram(data.type, data.renderer ?? "mermaid");
     });
 
-    socket.on("import-transcript", (text: string) => {
+    socket.on("import-transcript", (data: string | { text: string; name?: string }) => {
+      const text = typeof data === "string" ? data : data?.text;
+      const name = typeof data === "object" ? data?.name : undefined;
       if (typeof text !== "string" || !text.trim()) return;
-      active.handler.handleTranscriptImport(text.trim());
+      active.handler.handleTranscriptImport(text.trim(), name);
     });
 
     socket.on("delete-document", async (data: { id: string }) => {
@@ -214,6 +216,8 @@ export class MeetingManager {
       id: d.id,
       content: d.content,
       createdAt: d.created_at,
+      name: d.name,
+      docNumber: d.doc_number,
     }));
 
     socket.emit("meeting-state", { transcript, artefacts, documents, guidance: guidanceRows });

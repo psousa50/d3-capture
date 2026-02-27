@@ -19,6 +19,8 @@ export interface DocumentEntry {
   id: string;
   content: string;
   createdAt: number;
+  name: string;
+  docNumber: number;
 }
 
 export interface GuidanceItem {
@@ -119,8 +121,8 @@ export class MeetingSocket {
     this.socket?.emit("text-input", text);
   }
 
-  importTranscript(text: string) {
-    this.socket?.emit("import-transcript", text);
+  importTranscript(text: string, name?: string) {
+    this.socket?.emit("import-transcript", { text, name });
   }
 
   addDiagram(type: string, renderer: "mermaid" | "html") {

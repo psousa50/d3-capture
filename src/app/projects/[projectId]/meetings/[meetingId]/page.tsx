@@ -118,11 +118,12 @@ export default function MeetingPage() {
       <TranscriptImportModal
         open={importOpen}
         onClose={() => setImportOpen(false)}
-        onImport={(text) => {
-          importTranscript(text);
+        onImport={(text, name) => {
+          importTranscript(text, name);
           setImportOpen(false);
         }}
         loading={false}
+        documents={documents}
       />
     </div>
   );

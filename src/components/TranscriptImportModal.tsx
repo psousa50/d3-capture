@@ -1,26 +1,38 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import type { DocumentEntry } from "../lib/socket-client";
 
 export function TranscriptImportModal({
   open,
   onClose,
   onImport,
   loading,
+  documents = [],
 }: {
   open: boolean;
   onClose: () => void;
-  onImport: (transcript: string) => void;
+  onImport: (transcript: string, name: string) => void;
   loading: boolean;
+  documents?: DocumentEntry[];
 }) {
+  const nextDefault = `Doc ${Math.max(0, ...documents.map((d) => d.docNumber)) + 1}`;
   const [text, setText] = useState("");
+  const [name, setName] = useState(nextDefault);
+
+  useEffect(() => {
+    if (open) {
+      setText("");
+      setName(nextDefault);
+    }
+  }, [open, nextDefault]);
 
   if (!open) return null;
 
   const handleSubmit = () => {
     const trimmed = text.trim();
     if (!trimmed) return;
-    onImport(trimmed);
+    onImport(trimmed, name.trim() || nextDefault);
   };
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -43,16 +55,23 @@ export function TranscriptImportModal({
             </svg>
           </div>
           <div>
-            <h2 className="text-base font-semibold text-zinc-100">Import Transcript</h2>
-            <p className="text-xs text-zinc-500">Paste a transcript to generate specs, stories, and diagrams</p>
+            <h2 className="text-base font-semibold text-zinc-100">Import Document</h2>
+            <p className="text-xs text-zinc-500">Paste a document to generate specs, stories, and diagrams</p>
           </div>
         </div>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Document name"
+          disabled={loading}
+          className="mt-5 w-full rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 transition-colors focus:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500/25 disabled:opacity-50"
+        />
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Paste your meeting transcript here..."
+          placeholder="Paste your content here..."
           disabled={loading}
-          className="mt-5 h-64 w-full resize-none rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3 text-sm text-zinc-200 placeholder-zinc-600 transition-colors focus:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500/25 disabled:opacity-50"
+          className="mt-3 h-64 w-full resize-none rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3 text-sm text-zinc-200 placeholder-zinc-600 transition-colors focus:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500/25 disabled:opacity-50"
         />
         <div className="mt-4 flex justify-end gap-3">
           <button
@@ -67,7 +86,7 @@ export function TranscriptImportModal({
             disabled={!text.trim() || loading}
             className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-medium text-white transition-all hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {loading ? "Generating..." : "Generate"}
+            {loading ? "Generating..." : "Import"}
           </button>
         </div>
       </div>

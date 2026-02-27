@@ -22,7 +22,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ pro
   return NextResponse.json({
     ...project,
     artefacts: artefactMap,
-    documents: documents.map((d) => ({ id: d.id, content: d.content, createdAt: d.created_at })),
+    documents: documents.map((d) => ({ id: d.id, content: d.content, createdAt: d.created_at, name: d.name, docNumber: d.doc_number })),
   });
 }
 

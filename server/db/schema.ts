@@ -67,4 +67,7 @@ export async function migrate(pool: Pool) {
   `);
 
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_guidance_meeting ON guidance_items(meeting_id)`);
+
+  await pool.query(`ALTER TABLE documents ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT ''`);
+  await pool.query(`ALTER TABLE documents ADD COLUMN IF NOT EXISTS doc_number INTEGER NOT NULL DEFAULT 0`);
 }

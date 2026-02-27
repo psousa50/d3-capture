@@ -170,7 +170,7 @@ function DocumentsPanel({
                 : "text-zinc-500 hover:text-zinc-300"
             }`}
           >
-            Doc {i + 1}
+            {doc.name}
           </button>
         ))}
         {active && onDelete && (
@@ -191,8 +191,8 @@ function DocumentsPanel({
       )}
       <ConfirmModal
         open={confirmDelete}
-        title="Delete document"
-        message="This will permanently delete this imported document."
+        title={`Delete "${active?.name}"`}
+        message={`This will permanently delete "${active?.name}".`}
         onConfirm={() => {
           if (active && onDelete) onDelete(active.id);
           setConfirmDelete(false);

@@ -326,8 +326,8 @@ export function useMeeting() {
     socketRef.current?.sendText(text);
   }, []);
 
-  const importTranscript = useCallback((text: string) => {
-    socketRef.current?.importTranscript(text);
+  const importTranscript = useCallback((text: string, name?: string) => {
+    socketRef.current?.importTranscript(text, name);
   }, []);
 
   const regenerateDiagrams = useCallback(() => {
