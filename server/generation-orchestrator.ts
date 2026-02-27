@@ -67,9 +67,12 @@ export class GenerationOrchestrator {
       let specAffected = false;
       const diagramUpdates: string[] = [];
       const newDiagrams: string[] = [];
+      const diagramDeletions: string[] = [];
 
       for (const type of affected) {
-        if (type.startsWith("diagram:new:")) {
+        if (type.startsWith("diagram:delete:")) {
+          diagramDeletions.push(type.slice("diagram:delete:".length));
+        } else if (type.startsWith("diagram:new:")) {
           newDiagrams.push(type.slice("diagram:new:".length));
         } else if (type.startsWith("diagram:")) {
           diagramUpdates.push(type.slice("diagram:".length));
@@ -80,6 +83,15 @@ export class GenerationOrchestrator {
 
       if (specAffected) {
         await this.runSpecThenStories();
+      }
+
+      for (const type of diagramDeletions) {
+        const diagramKey = `diagram:${type}`;
+        if (this.contextManager.getArtefactStates()[diagramKey]) {
+          log.info({ diagram: diagramKey }, "deleting diagram");
+          await this.contextManager.clearSingleDiagram(type);
+          this.emit("artefact-deleted", { artefactType: diagramKey });
+        }
       }
 
       if (diagramUpdates.length > 0) {

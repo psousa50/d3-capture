@@ -96,6 +96,11 @@ export class MeetingSocket {
     return () => { this.socket?.off("artefact-error", handler); };
   }
 
+  onArtefactDeleted(handler: EventHandler<ArtefactUpdate>) {
+    this.socket?.on("artefact-deleted", handler);
+    return () => { this.socket?.off("artefact-deleted", handler); };
+  }
+
   onPresence(handler: EventHandler<PresenceUpdate>) {
     this.socket?.on("presence", handler);
     return () => { this.socket?.off("presence", handler); };

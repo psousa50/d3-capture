@@ -164,6 +164,17 @@ export function useMeeting() {
     }
   }, []);
 
+  const handleArtefactDeleted = useCallback((data: ArtefactUpdate) => {
+    const key = data.artefactType;
+    if (key.startsWith("diagram:")) {
+      const subType = key.slice("diagram:".length);
+      setArtefacts((prev) => {
+        const { [subType]: _, ...rest } = prev.diagrams;
+        return { ...prev, diagrams: rest };
+      });
+    }
+  }, []);
+
   const handleMeetingState = useCallback((snapshot: MeetingSnapshot) => {
     setTranscript(snapshot.transcript.map((t) => ({
       id: t.id,
@@ -228,6 +239,7 @@ export function useMeeting() {
       socket.onArtefactChunk(handleArtefactChunk);
       socket.onArtefactComplete(handleArtefactComplete);
       socket.onArtefactError(handleArtefactError);
+      socket.onArtefactDeleted(handleArtefactDeleted);
       socket.onPresence((data) => setParticipants(data.participants));
       socket.onError((msg) => setError(msg));
 
@@ -264,7 +276,7 @@ export function useMeeting() {
       setStatus("error");
       setError(err instanceof Error ? err.message : "Failed to connect");
     }
-  }, [handleMeetingState, handleArtefactStart, handleArtefactChunk, handleArtefactComplete, handleArtefactError]);
+  }, [handleMeetingState, handleArtefactStart, handleArtefactChunk, handleArtefactComplete, handleArtefactError, handleArtefactDeleted]);
 
   const startRecording = useCallback(async () => {
     const socket = socketRef.current;

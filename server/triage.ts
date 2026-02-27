@@ -6,10 +6,12 @@ import { logger } from "./logger";
 const log = logger.child({ module: "triage" });
 
 const NEW_DIAGRAM_PREFIX = "diagram:new:";
+const DELETE_DIAGRAM_PREFIX = "diagram:delete:";
 
 function normalise(raw: string, artefactTypes: string[]): string | null {
   const key = raw.toLowerCase().trim();
   if (key.startsWith(NEW_DIAGRAM_PREFIX) && key.length > NEW_DIAGRAM_PREFIX.length) return key;
+  if (key.startsWith(DELETE_DIAGRAM_PREFIX) && key.length > DELETE_DIAGRAM_PREFIX.length) return key;
   if (artefactTypes.includes(key)) return key;
   const map = getNormaliseMap();
   return map[key] ?? null;
@@ -46,7 +48,7 @@ export async function triageArtefacts(
 
     const normalised = parsed
       .map((t: string) => normalise(t, artefactTypes))
-      .filter((t): t is string => t !== null && (artefactTypes.includes(t) || t.startsWith(NEW_DIAGRAM_PREFIX)));
+      .filter((t): t is string => t !== null && (artefactTypes.includes(t) || t.startsWith(NEW_DIAGRAM_PREFIX) || t.startsWith(DELETE_DIAGRAM_PREFIX)));
 
     const unique = [...new Set(normalised)];
     log.info({ raw: cleaned, normalised: unique }, "triage result");

@@ -24,6 +24,11 @@ You may suggest creating a NEW diagram when the conversation contains enough con
 - Do not suggest a diagram type that already exists in the available types list
 - Also create diagrams when someone explicitly asks for one (e.g. "I'd like a C4 diagram" → "diagram:new:c4")
 
+Diagram deletion:
+Return "diagram:delete:{type}" when someone explicitly asks to remove or delete a specific diagram (e.g. "remove the sequence diagram" → "diagram:delete:sequence", "delete the ER diagram" → "diagram:delete:er").
+- Only delete when there is a clear, explicit request — never infer deletion from context
+- The {type} must match an existing diagram subtype from the available types list
+
 Respond with ONLY a JSON array of artefact type strings. No markdown, no explanation.
-Examples: ["spec", "diagram:wireframe"] or ["stories"] or ["diagram:new:er"] or []`;
+Examples: ["spec", "diagram:wireframe"] or ["stories"] or ["diagram:new:er"] or ["diagram:delete:sequence"] or []`;
 }
