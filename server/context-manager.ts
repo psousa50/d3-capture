@@ -80,7 +80,7 @@ export class ContextManager {
     };
   }
 
-  buildPromptContext(generatorType: string, excludeKey?: string): string {
+  buildPromptContext(generatorType: string, excludeKey?: string, latestText?: string): string {
     const ctx = this.getContext();
     const parts: string[] = [];
 
@@ -103,6 +103,10 @@ export class ContextManager {
       if (current) {
         parts.push(`## Current diagram\n${current}`);
       }
+    }
+
+    if (latestText) {
+      parts.push(`## What was just said (respond to this)\n${latestText}`);
     }
 
     return parts.join("\n\n");

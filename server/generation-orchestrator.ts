@@ -155,7 +155,7 @@ export class GenerationOrchestrator {
     this.assistantRunning = true;
 
     try {
-      const context = this.contextManager.buildPromptContext("assistant");
+      const context = this.contextManager.buildPromptContext("assistant", undefined, latestText);
       if (!context.trim()) return;
 
       const artefactStates = this.contextManager.getArtefactStates();
