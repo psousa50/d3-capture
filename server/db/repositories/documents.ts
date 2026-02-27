@@ -30,6 +30,18 @@ export async function getDocuments(meetingId: string): Promise<DocumentRow[]> {
   return rows;
 }
 
+export async function getDocumentsByProject(projectId: string): Promise<DocumentRow[]> {
+  const pool = getPool();
+  const { rows } = await pool.query(
+    `SELECT d.* FROM documents d
+     JOIN meetings m ON d.meeting_id = m.id
+     WHERE m.project_id = $1
+     ORDER BY d.created_at ASC`,
+    [projectId]
+  );
+  return rows;
+}
+
 export async function deleteDocument(id: string): Promise<void> {
   const pool = getPool();
   await pool.query("DELETE FROM documents WHERE id = $1", [id]);

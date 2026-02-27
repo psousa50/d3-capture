@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ArtefactTabs } from "../../../components/ArtefactTabs";
 import { ConfirmModal } from "../../../components/ConfirmModal";
 import type { MeetingArtefacts, ArtefactState, DiagramState } from "../../../lib/use-meeting";
+import type { DocumentEntry } from "../../../lib/socket-client";
 
 interface Meeting {
   id: string;
@@ -18,6 +19,7 @@ interface ProjectData {
   id: string;
   name: string;
   artefacts: Record<string, string>;
+  documents: DocumentEntry[];
 }
 
 function toReadOnlyArtefacts(raw: Record<string, string>): MeetingArtefacts {
@@ -172,7 +174,7 @@ export default function ProjectPage() {
               Generated Artefacts
             </h2>
             <div className="h-[500px] overflow-hidden rounded-xl border border-zinc-800/50 bg-zinc-950">
-              <ArtefactTabs artefacts={artefacts} />
+              <ArtefactTabs artefacts={artefacts} documents={project.documents} />
             </div>
           </div>
         )}
