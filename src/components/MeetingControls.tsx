@@ -87,12 +87,22 @@ export function MeetingControls({
             className="flex flex-1 items-center gap-2"
             onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}
           >
-            <input
-              type="text"
+            <textarea
+              rows={1}
               value={textInput}
-              onChange={(e) => setTextInput(e.target.value)}
-              placeholder="Describe what's being discussed..."
-              className="flex-1 rounded-lg border-0 bg-transparent px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none"
+              onChange={(e) => {
+                setTextInput(e.target.value);
+                e.target.style.height = "auto";
+                e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSubmit();
+                }
+              }}
+              placeholder="Say something..."
+              className="flex-1 resize-none rounded-lg border-0 bg-transparent px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none"
             />
             <button
               type="submit"
