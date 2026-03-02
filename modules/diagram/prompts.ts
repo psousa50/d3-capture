@@ -1,14 +1,3 @@
-export const PLANNING_PROMPT = `You are a technical architect. Analyse the meeting conversation and decide which diagrams would best capture the system being discussed.
-
-Pick 2-4 diagrams. For each, choose the most appropriate type (e.g. sequence diagram, ER diagram, C4 system context, flowchart, wireframe, component diagram, state machine, deployment diagram — anything useful).
-
-For each diagram, specify the renderer:
-- "mermaid" for technical diagrams (flowcharts, sequence, ER, C4, state, etc.)
-- "html" for UI wireframes, mockups, or page layouts
-
-Respond with ONLY a JSON array, no markdown, no explanation:
-[{"type": "sequence diagram", "focus": "brief description of what to show", "renderer": "mermaid"}, ...]`;
-
 export const MERMAID_CREATE_PROMPT = `Generate a Mermaid diagram based on the meeting conversation.
 
 Rules:

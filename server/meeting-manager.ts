@@ -76,10 +76,10 @@ export class MeetingManager {
       this.io.to(room).emit("transcript-deleted", { id: data.id });
     });
 
-    socket.on("add-diagram", (data: { type: string; renderer?: "mermaid" | "html" }) => {
+    socket.on("add-diagram", (data: { type: string; name?: string; renderer?: "mermaid" | "html" }) => {
       if (!data?.type) return;
-      log.info({ diagram: data.type, socketId: socket.id }, "add diagram requested");
-      active.handler.addDiagram(data.type, data.renderer ?? "mermaid");
+      log.info({ diagram: data.type, name: data.name, socketId: socket.id }, "add diagram requested");
+      active.handler.addDiagram(data.type, data.renderer ?? "mermaid", data.name);
     });
 
     socket.on("regenerate-diagrams", () => {
@@ -215,14 +215,17 @@ export class MeetingManager {
     }));
 
     const artefacts: Record<string, string> = {};
+    const artefactMeta: Record<string, { id: string; name: string }> = {};
     for (const row of artefactRows) {
       artefacts[row.type] = row.content;
+      artefactMeta[row.type] = { id: row.id, name: row.name };
     }
 
     if (featureId) {
       const contextRow = await getArtefact(projectId, "context");
       if (contextRow) {
         artefacts["context"] = contextRow.content;
+        artefactMeta["context"] = { id: contextRow.id, name: contextRow.name };
       }
     }
 
@@ -235,7 +238,7 @@ export class MeetingManager {
     }));
 
     const scope = featureId ? "feature" : "project";
-    socket.emit("meeting-state", { transcript, artefacts, documents, guidance: guidanceRows, scope });
+    socket.emit("meeting-state", { transcript, artefacts, artefactMeta, documents, guidance: guidanceRows, scope });
   }
 
   private async shutdownMeeting(meetingId: string) {

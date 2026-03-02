@@ -39,15 +39,26 @@ interface ArtefactTabsProps {
   artefacts: MeetingArtefacts;
   documents?: DocumentEntry[];
   visibleTabs?: TopTab[];
+  transcriptCollapsed?: boolean;
+  onToggleTranscript?: () => void;
   onDeleteDocument?: (id: string) => void;
   onRegenerateDiagrams?: () => void;
   onRegenerateDiagram?: (type: string, renderer: "mermaid" | "html") => void;
 }
 
-export function ArtefactTabs({ artefacts, documents, visibleTabs, onDeleteDocument, onRegenerateDiagrams, onRegenerateDiagram }: ArtefactTabsProps) {
+export function ArtefactTabs({ artefacts, documents, visibleTabs, transcriptCollapsed, onToggleTranscript, onDeleteDocument, onRegenerateDiagrams, onRegenerateDiagram }: ArtefactTabsProps) {
   const tabs = visibleTabs ? TABS.filter((t) => visibleTabs.includes(t.key)) : TABS;
   const [activeTab, setActiveTab] = useState<TopTab>(tabs[0]?.key ?? "diagrams");
   const [activeDiagram, setActiveDiagram] = useState<string | null>(null);
+
+  const tabKeys = tabs.map((t) => t.key).join(",");
+  useEffect(() => {
+    setActiveTab((prev) => {
+      if (tabs.some((t) => t.key === prev)) return prev;
+      return tabs[0]?.key ?? "diagrams";
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabKeys]);
 
   const diagramKeys = Object.keys(artefacts.diagrams);
 
@@ -65,6 +76,17 @@ export function ArtefactTabs({ artefacts, documents, visibleTabs, onDeleteDocume
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center border-b border-zinc-800/50 px-4">
+        {onToggleTranscript && (
+          <button
+            onClick={onToggleTranscript}
+            className="mr-2 flex h-6 w-6 items-center justify-center rounded-md text-zinc-600 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
+            title={transcriptCollapsed ? "Show transcript" : "Hide transcript"}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform ${transcriptCollapsed ? "rotate-180" : ""}`}>
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+          </button>
+        )}
         <div className="flex gap-1">
           {tabs.map((tab) => {
             const isUpdating =
@@ -75,6 +97,11 @@ export function ArtefactTabs({ artefacts, documents, visibleTabs, onDeleteDocume
                 : artefacts[tab.key as "context" | "spec" | "stories"].updating;
 
             const isActive = activeTab === tab.key;
+
+            const subtabCount =
+              tab.key === "diagrams" ? diagramKeys.length
+              : tab.key === "transcripts" ? (documents ?? []).length
+              : 0;
 
             return (
               <button
@@ -88,6 +115,9 @@ export function ArtefactTabs({ artefacts, documents, visibleTabs, onDeleteDocume
               >
                 <TabIcon tab={tab.key} />
                 {tab.label}
+                {subtabCount > 0 && (
+                  <span className="rounded-full bg-zinc-700/50 px-1.5 text-[10px] text-zinc-400">{subtabCount}</span>
+                )}
                 {isUpdating && (
                   <span className="ml-1 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-indigo-400" />
                 )}

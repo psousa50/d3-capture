@@ -5,10 +5,9 @@ import {
   getDiagramModule,
 } from "../modules/registry";
 import { ContextManager } from "./context-manager";
-import { triageArtefacts } from "./triage";
+import { routeTranscript } from "./routing";
 import { AccumulatedTranscript } from "./transcript-accumulator";
 import { logger } from "./logger";
-import { consolidateProjectDiagram } from "./diagram-consolidator";
 import { generateGuidanceItems } from "../modules/guidance/generator";
 import { getGuidanceItems, insertGuidanceItems, resolveGuidanceItem } from "./db/repositories/guidance";
 import { mentionsNova, runAssistant } from "../modules/assistant/generator";
@@ -25,13 +24,15 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   });
 }
 
+function slugify(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
 export class GenerationOrchestrator {
   private contextManager: ContextManager;
   private io: Server;
   private room: string;
   private meetingId: string;
-  private static consolidationTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  private static CONSOLIDATION_DEBOUNCE_MS = 5_000;
 
   private generating = false;
   private pendingTranscript: AccumulatedTranscript | null = null;
@@ -49,18 +50,25 @@ export class GenerationOrchestrator {
     return this.contextManager.getFeatureId() !== null;
   }
 
-  private getTriageTypes(): string[] {
-    const isFeature = this.isFeatureScoped();
-    const textTypes = getTextModules()
-      .filter((m) => {
-        if (m.type === "stories") return false;
-        if (isFeature) return m.type === "spec";
-        return m.type === "context";
-      })
-      .map((m) => m.type);
-    const diagramKeys = Object.keys(this.contextManager.getArtefactStates())
-      .filter((k) => k.startsWith("diagram:"));
-    return textTypes.concat(diagramKeys);
+  private getMeetingScope(): "project" | "feature" {
+    return this.isFeatureScoped() ? "feature" : "project";
+  }
+
+  private generateDiagramSlug(name: string): string {
+    const slug = slugify(name);
+    const prefix = `diagram:${slug}`;
+    const existingTypes = new Set(
+      this.contextManager.getArtefactSummary().map((a) => a.type),
+    );
+
+    if (!existingTypes.has(prefix)) return prefix;
+
+    for (let i = 2; i < 100; i++) {
+      const candidate = `${prefix}-${i}`;
+      if (!existingTypes.has(candidate)) return candidate;
+    }
+
+    return `${prefix}-${Date.now()}`;
   }
 
   async trigger(transcript: AccumulatedTranscript) {
@@ -72,73 +80,74 @@ export class GenerationOrchestrator {
     this.pendingTranscript = null;
 
     try {
-      const conversationContext = this.contextManager.buildPromptContext("triage");
-      const affected = await triageArtefacts(transcript.fullText, this.getTriageTypes(), conversationContext);
-      log.info({ affected }, "triage result");
+      const artefacts = this.contextManager.getArtefactSummary();
+      const summary = this.contextManager.getConversationSummary();
 
-      if (affected.length === 0) return;
+      const result = await routeTranscript(
+        transcript.fullText,
+        summary,
+        artefacts,
+        this.getMeetingScope(),
+      );
 
-      let contextAffected = false;
-      let specAffected = false;
-      const diagramUpdates: string[] = [];
-      const newDiagrams: string[] = [];
-      const diagramDeletions: string[] = [];
+      const hasWork = result.updateContext || result.updateSpec
+        || result.diagramCreates.length > 0
+        || result.diagramUpdates.length > 0
+        || result.diagramDeletes.length > 0
+        || result.projectDiagramUpdates.length > 0;
 
-      for (const type of affected) {
-        if (type.startsWith("diagram:delete:")) {
-          diagramDeletions.push(type.slice("diagram:delete:".length));
-        } else if (type.startsWith("diagram:new:")) {
-          newDiagrams.push(type.slice("diagram:new:".length));
-        } else if (type.startsWith("diagram:")) {
-          diagramUpdates.push(type.slice("diagram:".length));
-        } else if (type === "context") {
-          contextAffected = true;
-        } else if (type === "spec") {
-          specAffected = true;
+      if (!hasWork) return;
+
+      if (result.updateContext || result.updateSpec) {
+        await this.runTextArtefacts(result.updateContext, result.updateSpec);
+      }
+
+      for (const { id } of result.diagramDeletes) {
+        const entry = this.contextManager.getArtefactEntryById(id);
+        if (entry) {
+          log.info({ id, type: entry.type }, "deleting diagram");
+          await this.contextManager.deleteArtefactById(id);
+          this.emit("artefact-deleted", { artefactType: entry.type });
         }
       }
 
-      if (contextAffected || specAffected) {
-        await this.runTextArtefacts(contextAffected, specAffected);
+      if (result.diagramUpdates.length > 0) {
+        log.info({ count: result.diagramUpdates.length }, "updating existing diagrams");
+        const tasks = result.diagramUpdates.map(({ id }) => {
+          const entry = this.contextManager.getArtefactEntryById(id);
+          if (!entry) return Promise.resolve();
+
+          const renderer = this.inferRendererFromContent(entry.content);
+          return withTimeout(
+            this.runSingleDiagramById(id, entry.type, entry.name, renderer),
+            GENERATION_TIMEOUT_MS,
+            entry.type,
+          ).catch((err) => log.error({ err, id, type: entry.type }, "diagram update failed"));
+        });
+        await Promise.allSettled(tasks);
       }
 
-      for (const type of diagramDeletions) {
-        const diagramKey = `diagram:${type}`;
-        if (this.contextManager.getArtefactStates()[diagramKey]) {
-          log.info({ diagram: diagramKey }, "deleting diagram");
-          await this.contextManager.clearSingleDiagram(type);
-          this.emit("artefact-deleted", { artefactType: diagramKey });
-        }
+      for (const { name, renderer } of result.diagramCreates) {
+        const typeSlug = this.generateDiagramSlug(name);
+        log.info({ name, typeSlug, renderer }, "creating new diagram");
+        await withTimeout(
+          this.addDiagramInternal(typeSlug.slice("diagram:".length), renderer, name),
+          GENERATION_TIMEOUT_MS,
+          typeSlug,
+        ).catch((err) => log.error({ err, name, typeSlug }, "new diagram failed"));
       }
 
-      if (diagramUpdates.length > 0) {
-        log.info({ diagrams: diagramUpdates }, "updating existing diagrams");
-        await withTimeout(this.runDiagramGeneration(diagramUpdates), GENERATION_TIMEOUT_MS, "diagrams")
-          .catch((err) => log.error({ err }, "diagram update failed"));
-      }
+      for (const { id } of result.projectDiagramUpdates) {
+        const entry = this.contextManager.getArtefactEntryById(id);
+        if (!entry) continue;
 
-      if (newDiagrams.length === 0 && (contextAffected || specAffected)) {
-        const existingDiagrams = Object.keys(this.contextManager.getArtefactStates())
-          .filter((k) => k.startsWith("diagram:"));
-        if (existingDiagrams.length === 0) {
-          log.info("no diagrams exist, auto-planning initial diagrams");
-          const diagramMod = getDiagramModule();
-          if (diagramMod) {
-            const planContext = this.contextManager.buildPromptContext("diagram");
-            const plans = await diagramMod.planDiagrams(diagramMod.getProvider(), planContext);
-            for (const plan of plans) {
-              newDiagrams.push(plan.type);
-            }
-            log.info({ planned: newDiagrams }, "auto-planned diagrams");
-          }
-        }
-      }
-
-      for (const type of newDiagrams) {
-        const renderer = this.inferRenderer(type);
-        log.info({ diagram: type, renderer }, "creating new diagram");
-        await withTimeout(this.addDiagramInternal(type, renderer), GENERATION_TIMEOUT_MS, `diagram:new:${type}`)
-          .catch((err) => log.error({ err, diagram: type }, "new diagram failed"));
+        log.info({ id, type: entry.type }, "updating project diagram from feature");
+        const renderer = this.inferRendererFromContent(entry.content);
+        await withTimeout(
+          this.runProjectDiagramUpdate(id, entry.type, entry.name, renderer),
+          GENERATION_TIMEOUT_MS,
+          `project:${entry.type}`,
+        ).catch((err) => log.error({ err, id, type: entry.type }, "project diagram update failed"));
       }
 
       log.info("generation complete");
@@ -217,7 +226,7 @@ export class GenerationOrchestrator {
         .map(([key, content]) => ({
           type: key.slice("diagram:".length),
           focus: key.slice("diagram:".length),
-          renderer: (content.trimStart().startsWith("<") || content.includes("<!DOCTYPE")) ? "html" as const : "mermaid" as const,
+          renderer: this.inferRendererFromContent(content),
         }));
 
       if (plans.length === 0) return;
@@ -242,18 +251,18 @@ export class GenerationOrchestrator {
     }
   }
 
-  async addDiagram(diagramType: string, renderer: "mermaid" | "html" = "mermaid") {
+  async addDiagram(diagramType: string, renderer: "mermaid" | "html" = "mermaid", name?: string) {
     if (this.generating) return;
     this.generating = true;
 
     try {
-      await this.addDiagramInternal(diagramType, renderer);
+      await this.addDiagramInternal(diagramType, renderer, name);
     } finally {
       this.generating = false;
     }
   }
 
-  private async addDiagramInternal(diagramType: string, renderer: "mermaid" | "html") {
+  private async addDiagramInternal(diagramType: string, renderer: "mermaid" | "html", name?: string) {
     const diagramKey = `diagram:${diagramType}`;
     log.info({ diagram: diagramKey }, "adding diagram");
 
@@ -261,12 +270,15 @@ export class GenerationOrchestrator {
     if (!diagramMod) return;
 
     const plan: DiagramPlan = { type: diagramType, focus: diagramType, renderer };
-    await this.runSingleDiagram(plan);
+    await this.runSingleDiagram(plan, undefined, name);
   }
 
-  private inferRenderer(diagramType: string): "mermaid" | "html" {
-    const htmlTypes = ["wireframe", "mockup", "ui", "layout", "page-layout"];
-    return htmlTypes.includes(diagramType) ? "html" : "mermaid";
+  private inferRendererFromContent(content: string): "mermaid" | "html" {
+    const trimmed = content.trimStart();
+    if (trimmed.startsWith("<") || content.includes("<!DOCTYPE") || trimmed.startsWith("```html")) {
+      return "html";
+    }
+    return "mermaid";
   }
 
   async regenerateSingleDiagram(diagramType: string, renderer: "mermaid" | "html" = "mermaid") {
@@ -372,65 +384,10 @@ export class GenerationOrchestrator {
     }
   }
 
-  private async runDiagramGeneration(onlyTypes: string[]) {
-    const diagramMod = getDiagramModule();
-    if (!diagramMod) return;
-
-    const baseContext = this.contextManager.buildPromptContext("diagram");
-    if (!baseContext.trim()) {
-      log.warn("empty context, skipping diagram update");
-      return;
-    }
-
-    const artefactStates = this.contextManager.getArtefactStates();
-    const existingDiagrams = Object.entries(artefactStates)
-      .filter(([key]) => key.startsWith("diagram:"))
-      .map(([key, content]) => ({ type: key.slice("diagram:".length), content }));
-
-    const toUpdate = existingDiagrams.filter((d) => onlyTypes.includes(d.type));
-    if (toUpdate.length === 0) return;
-
-    this.emit("artefact-start", { artefactType: "diagram" });
-
-    try {
-      log.info({ diagrams: toUpdate.map((d) => d.type) }, "updating diagrams");
-
-      const plan: DiagramPlan[] = toUpdate.map((d) => ({
-        type: d.type,
-        focus: `update ${d.type}`,
-        renderer: (d.content.trimStart().startsWith("<") || d.content.includes("<!DOCTYPE") || d.content.trimStart().startsWith("```html")) ? "html" as const : "mermaid" as const,
-      }));
-
-      const diagramTasks = plan.map((entry) => {
-        const diagramKey = `diagram:${entry.type}`;
-        const currentContent = artefactStates[diagramKey];
-        log.info({ diagram: diagramKey }, "updating diagram");
-        return withTimeout(
-          this.runSingleDiagram(entry, currentContent),
-          GENERATION_TIMEOUT_MS,
-          diagramKey,
-        ).then(
-          () => log.info({ diagram: diagramKey }, "diagram complete"),
-          (err) => log.error({ err, diagram: diagramKey }, "diagram failed"),
-        );
-      });
-
-      await Promise.allSettled(diagramTasks);
-
-      this.emit("artefact-complete", { artefactType: "diagram" });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Diagram update failed";
-      log.error({ err }, "diagram generation error");
-      this.emit("artefact-error", {
-        artefactType: "diagram",
-        error: message,
-      });
-    }
-  }
-
   private async runSingleDiagram(
     entry: DiagramPlan,
     currentContent?: string,
+    name?: string,
   ) {
     const diagramMod = getDiagramModule();
     if (!diagramMod) return;
@@ -440,7 +397,7 @@ export class GenerationOrchestrator {
     const provider = diagramMod.getProvider();
     let fullContent = "";
 
-    this.emit("artefact-start", { artefactType, renderer: entry.renderer });
+    this.emit("artefact-start", { artefactType, renderer: entry.renderer, ...(name ? { name } : {}) });
 
     try {
       for await (const chunk of diagramMod.generateDiagram(provider, context, entry, currentContent)) {
@@ -456,10 +413,9 @@ export class GenerationOrchestrator {
         return;
       }
 
-      await this.contextManager.updateArtefact(artefactType, processed);
+      await this.contextManager.updateArtefact(artefactType, processed, name);
 
       this.emit("artefact-complete", { artefactType, content: processed });
-      this.scheduleConsolidation(entry.type);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Generation failed";
       log.error({ err, artefactType }, "diagram generator error");
@@ -470,23 +426,93 @@ export class GenerationOrchestrator {
     }
   }
 
-  private scheduleConsolidation(diagramType: string) {
-    if (!this.isFeatureScoped()) return;
+  private async runSingleDiagramById(
+    id: string,
+    type: string,
+    name: string,
+    renderer: "mermaid" | "html",
+  ) {
+    const diagramMod = getDiagramModule();
+    if (!diagramMod) return;
 
-    const projectId = this.contextManager.getProjectId();
-    const key = `${projectId}:${diagramType}`;
+    const context = this.contextManager.buildDiagramContext(id);
+    const provider = diagramMod.getProvider();
+    const entry = this.contextManager.getArtefactEntryById(id);
+    const currentContent = entry?.content;
 
-    const existing = GenerationOrchestrator.consolidationTimers.get(key);
-    if (existing) clearTimeout(existing);
+    const plan: DiagramPlan = {
+      type: type.slice("diagram:".length),
+      focus: `update ${name || type}`,
+      renderer,
+    };
 
-    const timer = setTimeout(() => {
-      GenerationOrchestrator.consolidationTimers.delete(key);
-      consolidateProjectDiagram(projectId, diagramType).catch((err) =>
-        log.warn({ err, projectId, diagramType }, "diagram consolidation failed"),
-      );
-    }, GenerationOrchestrator.CONSOLIDATION_DEBOUNCE_MS);
+    let fullContent = "";
 
-    GenerationOrchestrator.consolidationTimers.set(key, timer);
+    this.emit("artefact-start", { artefactType: type, renderer });
+
+    try {
+      for await (const chunk of diagramMod.generateDiagram(provider, context, plan, currentContent)) {
+        fullContent += chunk;
+        this.emit("artefact-chunk", { artefactType: type, chunk });
+      }
+
+      const processed = diagramMod.postProcess(fullContent, renderer);
+
+      if (processed === null) {
+        log.info({ type }, "diagram skipped — insufficient context");
+        this.emit("artefact-complete", { artefactType: type, content: "" });
+        return;
+      }
+
+      await this.contextManager.updateArtefact(type, processed, name);
+
+      this.emit("artefact-complete", { artefactType: type, content: processed });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Generation failed";
+      log.error({ err, type }, "diagram update error");
+      this.emit("artefact-error", { artefactType: type, error: message });
+    }
+  }
+
+  private async runProjectDiagramUpdate(
+    id: string,
+    type: string,
+    name: string,
+    renderer: "mermaid" | "html",
+  ) {
+    const diagramMod = getDiagramModule();
+    if (!diagramMod) return;
+
+    const context = this.contextManager.buildDiagramContext(id);
+    const provider = diagramMod.getProvider();
+    const entry = this.contextManager.getArtefactEntryById(id);
+    const currentContent = entry?.content;
+
+    const plan: DiagramPlan = {
+      type: type.slice("diagram:".length),
+      focus: `update ${name || type}`,
+      renderer,
+    };
+
+    let fullContent = "";
+
+    try {
+      for await (const chunk of diagramMod.generateDiagram(provider, context, plan, currentContent)) {
+        fullContent += chunk;
+      }
+
+      const processed = diagramMod.postProcess(fullContent, renderer);
+
+      if (processed === null) {
+        log.info({ type }, "project diagram skipped — insufficient context");
+        return;
+      }
+
+      await this.contextManager.updateProjectArtefact(type, processed, name);
+      log.info({ type, name }, "project diagram updated");
+    } catch (err) {
+      log.error({ err, type }, "project diagram update error");
+    }
   }
 
   private emit(event: string, data: Record<string, unknown>) {

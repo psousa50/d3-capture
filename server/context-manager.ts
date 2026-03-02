@@ -4,12 +4,14 @@ import {
   upsertArtefact,
   deleteDiagramArtefacts,
   deleteArtefact,
+  deleteArtefactById,
   getProjectArtefacts,
   getFeatureArtefacts,
   getArtefact,
 } from "./db/repositories/artefacts";
 import { getChunks } from "./db/repositories/transcripts";
 import { getDocuments } from "./db/repositories/documents";
+import type { ArtefactInfo } from "./routing";
 import { logger } from "./logger";
 
 const log = logger.child({ module: "context" });
@@ -18,10 +20,17 @@ const PROJECT_SCOPE = "__project__";
 const VERBATIM_WINDOW_MS = 5 * 60 * 1000;
 const SUMMARISE_INTERVAL_MS = 5 * 60 * 1000;
 
+export interface ArtefactEntry {
+  id: string;
+  type: string;
+  name: string;
+  content: string;
+  scope: "project" | "feature";
+}
+
 interface ContextWindow {
   summary: string;
   recentTranscripts: AccumulatedTranscript[];
-  artefactStates: Record<string, string>;
 }
 
 export class ContextManager {
@@ -29,7 +38,7 @@ export class ContextManager {
   private featureId: string | null;
   private transcripts: AccumulatedTranscript[] = [];
   private summary = "";
-  private artefactStates: Record<string, string> = {};
+  private artefactEntries = new Map<string, ArtefactEntry>();
   private lastSummarisedAt: number = Date.now();
   private summarising = false;
 
@@ -43,16 +52,46 @@ export class ContextManager {
     if (this.featureId) {
       const featureRows = await getFeatureArtefacts(this.projectId, this.featureId);
       for (const row of featureRows) {
-        this.artefactStates[row.type] = row.content;
+        this.artefactEntries.set(row.type, {
+          id: row.id,
+          type: row.type,
+          name: row.name,
+          content: row.content,
+          scope: "feature",
+        });
       }
       const contextRow = await getArtefact(this.projectId, "context");
       if (contextRow) {
-        this.artefactStates["context"] = contextRow.content;
+        this.artefactEntries.set("context", {
+          id: contextRow.id,
+          type: "context",
+          name: contextRow.name,
+          content: contextRow.content,
+          scope: "project",
+        });
+      }
+      const projectRows = await getProjectArtefacts(this.projectId);
+      for (const row of projectRows) {
+        if (row.type.startsWith("diagram:") && !this.artefactEntries.has(row.type)) {
+          this.artefactEntries.set(`project:${row.type}`, {
+            id: row.id,
+            type: row.type,
+            name: row.name,
+            content: row.content,
+            scope: "project",
+          });
+        }
       }
     } else {
       const rows = await getProjectArtefacts(this.projectId);
       for (const row of rows) {
-        this.artefactStates[row.type] = row.content;
+        this.artefactEntries.set(row.type, {
+          id: row.id,
+          type: row.type,
+          name: row.name,
+          content: row.content,
+          scope: "project",
+        });
       }
     }
 
@@ -91,14 +130,84 @@ export class ContextManager {
     this.maybeSummarise();
   }
 
-  async updateArtefact(type: string, content: string) {
-    this.artefactStates[type] = content;
-    const scope = this.featureId ?? PROJECT_SCOPE;
-    if (type === "context" && this.featureId) {
-      await upsertArtefact(this.projectId, type, content, PROJECT_SCOPE);
-    } else {
-      await upsertArtefact(this.projectId, type, content, scope);
+  getArtefactSummary(): ArtefactInfo[] {
+    const result: ArtefactInfo[] = [];
+    for (const entry of this.artefactEntries.values()) {
+      result.push({ id: entry.id, type: entry.type, name: entry.name, scope: entry.scope });
     }
+    return result;
+  }
+
+  getArtefactEntry(mapKey: string): ArtefactEntry | undefined {
+    return this.artefactEntries.get(mapKey);
+  }
+
+  getArtefactEntryById(id: string): ArtefactEntry | undefined {
+    for (const entry of this.artefactEntries.values()) {
+      if (entry.id === id) return entry;
+    }
+    return undefined;
+  }
+
+  async updateArtefact(type: string, content: string, name?: string) {
+    const scope = this.featureId ?? PROJECT_SCOPE;
+    const isProjectContext = type === "context" && this.featureId;
+    const featureId = isProjectContext ? PROJECT_SCOPE : scope;
+
+    const entry = this.artefactEntries.get(type);
+    const artefactName = name ?? entry?.name ?? "";
+
+    const id = await upsertArtefact(this.projectId, type, content, featureId, artefactName);
+
+    this.artefactEntries.set(type, {
+      id,
+      type,
+      name: artefactName,
+      content,
+      scope: isProjectContext ? "project" : (this.featureId ? "feature" : "project"),
+    });
+  }
+
+  async updateProjectArtefact(type: string, content: string, name?: string) {
+    const entry = this.findEntryByType(type, "project");
+    const artefactName = name ?? entry?.name ?? "";
+
+    const id = await upsertArtefact(this.projectId, type, content, PROJECT_SCOPE, artefactName);
+
+    const mapKey = this.featureId ? `project:${type}` : type;
+    this.artefactEntries.set(mapKey, {
+      id,
+      type,
+      name: artefactName,
+      content,
+      scope: "project",
+    });
+  }
+
+  async deleteArtefactById(id: string) {
+    await deleteArtefactById(id);
+    for (const [key, entry] of this.artefactEntries.entries()) {
+      if (entry.id === id) {
+        this.artefactEntries.delete(key);
+        break;
+      }
+    }
+  }
+
+  private findEntryByType(type: string, scope: "project" | "feature"): ArtefactEntry | undefined {
+    for (const entry of this.artefactEntries.values()) {
+      if (entry.type === type && entry.scope === scope) return entry;
+    }
+    return undefined;
+  }
+
+  getArtefactStates(): Record<string, string> {
+    const result: Record<string, string> = {};
+    for (const entry of this.artefactEntries.values()) {
+      if (entry.scope === "project" && this.featureId && entry.type.startsWith("diagram:")) continue;
+      result[entry.type] = entry.content;
+    }
+    return result;
   }
 
   getContext(): ContextWindow {
@@ -107,11 +216,7 @@ export class ContextManager {
       (t) => t.endTime > cutoff
     );
 
-    return {
-      summary: this.summary,
-      recentTranscripts,
-      artefactStates: { ...this.artefactStates },
-    };
+    return { summary: this.summary, recentTranscripts };
   }
 
   buildPromptContext(generatorType: string, excludeKey?: string, latestText?: string): string {
@@ -133,9 +238,9 @@ export class ContextManager {
     }
 
     if (generatorType === "diagram" && excludeKey) {
-      const current = ctx.artefactStates[excludeKey];
-      if (current) {
-        parts.push(`## Current diagram\n${current}`);
+      const entry = this.artefactEntries.get(excludeKey);
+      if (entry) {
+        parts.push(`## Current diagram\n${entry.content}`);
       }
     }
 
@@ -146,26 +251,68 @@ export class ContextManager {
     return parts.join("\n\n");
   }
 
+  buildDiagramContext(artefactId: string): string {
+    const parts: string[] = [];
+    const ctx = this.getContext();
+
+    const entry = this.getArtefactEntryById(artefactId);
+
+    const textArtefact = entry?.scope === "project"
+      ? this.artefactEntries.get("context")
+      : (this.artefactEntries.get("spec") ?? this.artefactEntries.get("context"));
+
+    if (textArtefact?.content) {
+      parts.push(`## Background\n${textArtefact.content}`);
+    }
+
+    if (entry?.content) {
+      parts.push(`## Current diagram\n${entry.content}`);
+    }
+
+    if (ctx.summary) {
+      parts.push(`## Earlier in the meeting (summary)\n${ctx.summary}`);
+    }
+
+    if (ctx.recentTranscripts.length > 0) {
+      const recentText = ctx.recentTranscripts.map((t) => t.fullText).join("\n\n");
+      parts.push(`## Recent conversation\n${recentText}`);
+    } else if (!ctx.summary && this.transcripts.length > 0) {
+      const allText = this.transcripts.map((t) => t.fullText).join("\n\n");
+      parts.push(`## Meeting conversation\n${allText}`);
+    }
+
+    return parts.join("\n\n");
+  }
+
   getFullTranscript(): string {
     return this.transcripts.map((t) => t.fullText).join("\n\n");
   }
 
-  getArtefactStates(): Record<string, string> {
-    return { ...this.artefactStates };
+  getConversationSummary(): string | undefined {
+    return this.summary || undefined;
+  }
+
+  getRecentTranscriptText(): string {
+    const ctx = this.getContext();
+    if (ctx.recentTranscripts.length > 0) {
+      return ctx.recentTranscripts.map((t) => t.fullText).join("\n\n");
+    }
+    return this.transcripts.map((t) => t.fullText).join("\n\n");
   }
 
   async clearDiagramArtefacts() {
-    for (const key of Object.keys(this.artefactStates)) {
-      if (key.startsWith("diagram:")) {
-        delete this.artefactStates[key];
+    for (const [key, entry] of this.artefactEntries.entries()) {
+      if (entry.type.startsWith("diagram:") && entry.scope !== "project") {
+        this.artefactEntries.delete(key);
       }
     }
     await deleteDiagramArtefacts(this.projectId, this.featureId ?? PROJECT_SCOPE);
   }
 
   async clearSingleDiagram(diagramType: string) {
-    delete this.artefactStates[`diagram:${diagramType}`];
-    await deleteArtefact(this.projectId, `diagram:${diagramType}`, this.featureId ?? PROJECT_SCOPE);
+    const fullType = `diagram:${diagramType}`;
+    this.artefactEntries.delete(fullType);
+    await deleteArtefact(this.projectId, fullType, this.featureId ?? PROJECT_SCOPE);
   }
 
   private async maybeSummarise() {

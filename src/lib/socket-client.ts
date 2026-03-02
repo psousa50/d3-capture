@@ -14,6 +14,7 @@ export interface ArtefactUpdate {
   content?: string;
   error?: string;
   renderer?: "mermaid" | "html";
+  name?: string;
 }
 
 export interface DocumentEntry {
@@ -32,9 +33,15 @@ export interface GuidanceItem {
   createdAt: number;
 }
 
+export interface ArtefactMeta {
+  id: string;
+  name: string;
+}
+
 export interface MeetingSnapshot {
   transcript: { id?: number; text: string; speaker: string | null; isFinal: boolean; timestamp?: number }[];
   artefacts: Record<string, string>;
+  artefactMeta?: Record<string, ArtefactMeta>;
   documents: DocumentEntry[];
   guidance: GuidanceItem[];
   scope?: "project" | "feature";

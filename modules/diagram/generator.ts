@@ -1,58 +1,12 @@
 import { DiagramPlan } from "../types";
 import { LLMProvider } from "../../server/llm/types";
 import { getProviderForGenerator } from "../../server/llm/config";
-import { logger } from "../../server/logger";
-
-const log = logger.child({ module: "diagram" });
 import {
-  PLANNING_PROMPT,
   MERMAID_CREATE_PROMPT,
   MERMAID_UPDATE_PROMPT,
   HTML_CREATE_PROMPT,
   HTML_UPDATE_PROMPT,
 } from "./prompts";
-
-export async function planDiagrams(
-  provider: LLMProvider,
-  context: string,
-): Promise<DiagramPlan[]> {
-  let json = "";
-  for await (const chunk of provider.stream({
-    system: PLANNING_PROMPT,
-    messages: [{ role: "user", content: context }],
-    maxTokens: 512,
-  })) {
-    json += chunk;
-  }
-
-  try {
-    const cleaned = json
-      .replace(/```(?:json)?\n?/g, "")
-      .replace(/```/g, "")
-      .trim();
-    const parsed = JSON.parse(cleaned);
-    if (!Array.isArray(parsed) || parsed.length === 0)
-      throw new Error("empty plan");
-
-    return parsed
-      .filter(
-        (entry: DiagramPlan) =>
-          entry.type &&
-          entry.focus &&
-          (entry.renderer === "mermaid" || entry.renderer === "html"),
-      )
-      .slice(0, 4);
-  } catch {
-    log.error({ response: json }, "failed to parse plan, falling back");
-    return [
-      {
-        type: "flowchart",
-        focus: "general system overview",
-        renderer: "mermaid",
-      },
-    ];
-  }
-}
 
 export async function* generateDiagram(
   provider: LLMProvider,

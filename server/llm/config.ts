@@ -66,8 +66,12 @@ function createProvider(name: ProviderName): LLMProvider {
   }
 }
 
+const GENERATOR_DEFAULTS: Record<string, ProviderName> = {
+  routing: "anthropic",
+};
+
 export function getProviderForGenerator(generator: string): LLMProvider {
-  const providerName = config.generators[generator] ?? config.defaultProvider;
+  const providerName = config.generators[generator] ?? GENERATOR_DEFAULTS[generator] ?? config.defaultProvider;
   log.info({ generator, provider: providerName }, "routing");
   return getOrCreateProvider(providerName);
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { MeetingSocket, type ArtefactUpdate, type DocumentEntry, type GuidanceItem, type MeetingSnapshot, type Participant } from "./socket-client";
+import { MeetingSocket, type ArtefactMeta, type ArtefactUpdate, type DocumentEntry, type GuidanceItem, type MeetingSnapshot, type Participant } from "./socket-client";
 import { AudioCapture } from "./audio-capture";
 
 export type MeetingStatus = "idle" | "connecting" | "connected" | "recording" | "error";
@@ -79,7 +79,7 @@ export function useMeeting() {
             content: prev.diagrams[subType]?.content ?? "",
             updating: true,
             pendingContent: "",
-            label: diagramLabel(subType),
+            label: data.name || prev.diagrams[subType]?.label || diagramLabel(subType),
             renderer: data.renderer ?? "mermaid",
           },
         },
@@ -194,18 +194,20 @@ export function useMeeting() {
 
     setArtefacts((prev) => {
       const next = { ...prev };
+      const meta = snapshot.artefactMeta ?? {};
       for (const [type, content] of Object.entries(snapshot.artefacts)) {
         if (type === "context" || type === "spec" || type === "stories") {
           next[type] = { content, updating: false, pendingContent: "" };
         } else if (type.startsWith("diagram:")) {
           const subType = type.slice("diagram:".length);
+          const name = meta[type]?.name;
           next.diagrams = {
             ...next.diagrams,
             [subType]: {
               content,
               updating: false,
               pendingContent: "",
-              label: diagramLabel(subType),
+              label: name || diagramLabel(subType),
               renderer: content.trimStart().startsWith("<") || content.includes("<!DOCTYPE") || content.trimStart().startsWith("```html") ? "html" : "mermaid",
             },
           };

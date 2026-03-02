@@ -3,8 +3,6 @@ import { SpecGenerator } from "./generator";
 
 const specModule: ArtefactModuleDefinition = {
   type: "spec",
-  description: "technical specification document (also triggers user stories generation)",
-  aliases: ["specifications", "specification"],
   generator: new SpecGenerator(),
 };
 

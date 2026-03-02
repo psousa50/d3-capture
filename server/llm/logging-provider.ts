@@ -1,4 +1,4 @@
-import { LLMProvider, StreamParams } from "./types";
+import { LLMProvider, StreamParams, ToolCallParams, ToolCallResult } from "./types";
 import { promptLogger } from "../logger";
 
 const log = promptLogger.child({ module: "llm" });
@@ -22,5 +22,21 @@ export class LoggingProvider implements LLMProvider {
     }
 
     log.debug({ provider: this.label, chars: full.length, response: full }, "response");
+  }
+
+  async toolCall(params: ToolCallParams): Promise<ToolCallResult> {
+    log.debug(
+      { provider: this.label, system: params.system, messages: params.messages, tools: params.tools.map((t) => t.name) },
+      "tool-call request",
+    );
+
+    const result = await this.inner.toolCall(params);
+
+    log.debug(
+      { provider: this.label, toolCalls: result.toolCalls, text: result.text },
+      "tool-call response",
+    );
+
+    return result;
   }
 }

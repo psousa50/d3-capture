@@ -180,13 +180,11 @@ function groupConsecutiveEntries(entries: TranscriptEntry[]): GroupedEntry[] {
 export function TranscriptPanel({
   entries,
   collapsed,
-  onToggle,
   onEdit,
   onDelete,
 }: {
   entries: TranscriptEntry[];
   collapsed: boolean;
-  onToggle: () => void;
   onEdit?: (id: number, text: string) => void;
   onDelete?: (id: number) => void;
 }) {
@@ -199,67 +197,57 @@ export function TranscriptPanel({
   const groups = groupConsecutiveEntries(entries);
 
   return (
-    <div className={`relative flex h-full flex-col border-r border-zinc-800/50 bg-zinc-950 transition-all duration-300 ${collapsed ? "w-0 overflow-hidden border-r-0" : "w-80"}`}>
-      <div className="flex items-center justify-between border-b border-zinc-800/50 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-500">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-          </svg>
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Transcript</h2>
-        </div>
-        {entries.length > 0 && (
-          <span className="text-[10px] tabular-nums text-zinc-600">{entries.length}</span>
-        )}
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-1 py-2 space-y-0.5">
-        {entries.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-12 text-centre">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mb-2 text-zinc-700">
-              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-              <line x1="12" y1="19" x2="12" y2="23" />
-              <line x1="8" y1="23" x2="16" y2="23" />
+    <div className={`flex h-full flex-shrink-0 flex-col border-r border-zinc-800/50 bg-zinc-950 transition-all duration-300 ${collapsed ? "w-0 overflow-hidden border-r-0" : "w-80"}`}>
+        <div className="flex items-center justify-between border-b border-zinc-800/50 px-4 py-3">
+          <div className="flex items-center gap-2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-500">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             </svg>
-            <p className="text-xs text-zinc-600">Start recording or type to begin</p>
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Transcript</h2>
           </div>
-        )}
-        {groups.map((group, i) => (
-          group.entries.length === 1 ? (
-            <TranscriptEntryRow
-              key={group.entries[0].id ?? `live-${i}`}
-              entry={group.entries[0]}
-              onEdit={onEdit}
-              onDelete={onDelete}
-            />
-          ) : (
-            <div key={`group-${group.entries[0].id ?? i}`} className="rounded-lg px-3 py-2">
-              {group.speaker != null && (
-                <div className="mb-1 flex items-center gap-1.5">
-                  <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full text-[8px] font-bold ${speakerBgColour(group.speaker)} ${speakerColour(group.speaker)}`}>
-                    {speakerLabel(group.speaker).charAt(0).toUpperCase()}
-                  </span>
-                  <span className={`text-xs font-medium ${speakerColour(group.speaker)}`}>
-                    {speakerLabel(group.speaker)}
-                  </span>
-                </div>
-              )}
-              <p className="text-sm leading-relaxed text-zinc-300">{group.text}</p>
-            </div>
-          )
-        ))}
-        <div ref={bottomRef} />
-      </div>
+          {entries.length > 0 && (
+            <span className="text-[10px] tabular-nums text-zinc-600">{entries.length}</span>
+          )}
+        </div>
 
-      <button
-        onClick={onToggle}
-        className="absolute -right-8 top-3 flex h-6 w-6 items-center justify-center rounded-md bg-zinc-900 text-zinc-500 ring-1 ring-zinc-800 transition-colors hover:bg-zinc-800 hover:text-zinc-300 z-10"
-        title={collapsed ? "Show transcript" : "Hide transcript"}
-      >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform ${collapsed ? "rotate-180" : ""}`}>
-          <polyline points="15 18 9 12 15 6" />
-        </svg>
-      </button>
+        <div className="flex-1 overflow-y-auto px-1 py-2 space-y-0.5">
+          {entries.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-12 text-centre">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mb-2 text-zinc-700">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                <line x1="12" y1="19" x2="12" y2="23" />
+                <line x1="8" y1="23" x2="16" y2="23" />
+              </svg>
+              <p className="text-xs text-zinc-600">Start recording or type to begin</p>
+            </div>
+          )}
+          {groups.map((group, i) => (
+            group.entries.length === 1 ? (
+              <TranscriptEntryRow
+                key={group.entries[0].id ?? `live-${i}`}
+                entry={group.entries[0]}
+                onEdit={onEdit}
+                onDelete={onDelete}
+              />
+            ) : (
+              <div key={`group-${group.entries[0].id ?? i}`} className="rounded-lg px-3 py-2">
+                {group.speaker != null && (
+                  <div className="mb-1 flex items-center gap-1.5">
+                    <span className={`inline-flex h-4 w-4 items-center justify-center rounded-full text-[8px] font-bold ${speakerBgColour(group.speaker)} ${speakerColour(group.speaker)}`}>
+                      {speakerLabel(group.speaker).charAt(0).toUpperCase()}
+                    </span>
+                    <span className={`text-xs font-medium ${speakerColour(group.speaker)}`}>
+                      {speakerLabel(group.speaker)}
+                    </span>
+                  </div>
+                )}
+                <p className="text-sm leading-relaxed text-zinc-300">{group.text}</p>
+              </div>
+            )
+          ))}
+          <div ref={bottomRef} />
+        </div>
     </div>
   );
 }

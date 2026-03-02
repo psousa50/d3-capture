@@ -81,7 +81,6 @@ export default function MeetingPage() {
         <TranscriptPanel
           entries={transcript}
           collapsed={transcriptCollapsed}
-          onToggle={() => setTranscriptCollapsed((v) => !v)}
           onEdit={editTranscript}
           onDelete={deleteTranscript}
         />
@@ -94,6 +93,8 @@ export default function MeetingPage() {
               ? ["spec", "stories", "diagrams", "transcripts"]
               : ["context", "diagrams", "transcripts"]
             }
+            transcriptCollapsed={transcriptCollapsed}
+            onToggleTranscript={() => setTranscriptCollapsed((v) => !v)}
             onDeleteDocument={deleteDocument}
             onRegenerateDiagrams={regenerateDiagrams}
             onRegenerateDiagram={regenerateDiagram}

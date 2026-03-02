@@ -1,6 +1,6 @@
 import { spawn } from "child_process";
 import { createInterface } from "readline";
-import { LLMProvider, StreamParams, Message } from "./types";
+import { LLMProvider, StreamParams, Message, ToolCallParams, ToolCallResult } from "./types";
 
 function formatMessages(messages: Message[]): string {
   if (messages.length === 1) return messages[0].content;
@@ -76,5 +76,9 @@ export class ClaudeCodeProvider implements LLMProvider {
     if (exitCode !== 0) {
       throw new Error(`claude-code exited with code ${exitCode}: ${error.trim()}`);
     }
+  }
+
+  async toolCall(_params: ToolCallParams): Promise<ToolCallResult> {
+    throw new Error("toolCall is not supported by claude-code provider");
   }
 }

@@ -83,6 +83,7 @@ export async function migrate(pool: Pool) {
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_features_project ON features(project_id)`);
   await pool.query(`ALTER TABLE meetings ADD COLUMN IF NOT EXISTS feature_id TEXT REFERENCES features(id)`);
   await pool.query(`ALTER TABLE artefacts ADD COLUMN IF NOT EXISTS feature_id TEXT NOT NULL DEFAULT '__project__'`);
+  await pool.query(`ALTER TABLE artefacts ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT ''`);
 
   await pool.query(`
     DO $$ BEGIN

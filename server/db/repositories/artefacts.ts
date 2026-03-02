@@ -8,6 +8,7 @@ export interface ArtefactRow {
   project_id: string;
   feature_id: string;
   type: string;
+  name: string;
   content: string;
   updated_at: number;
 }
@@ -17,16 +18,21 @@ export async function upsertArtefact(
   type: string,
   content: string,
   featureId: string = PROJECT_SCOPE,
-): Promise<void> {
+  name: string = "",
+): Promise<string> {
   const pool = getPool();
   const now = Date.now();
+  const id = randomUUID();
 
-  await pool.query(
-    `INSERT INTO artefacts (id, project_id, feature_id, type, content, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     ON CONFLICT(project_id, feature_id, type) DO UPDATE SET content = EXCLUDED.content, updated_at = EXCLUDED.updated_at`,
-    [randomUUID(), projectId, featureId, type, content, now],
+  const { rows } = await pool.query(
+    `INSERT INTO artefacts (id, project_id, feature_id, type, content, updated_at, name)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT(project_id, feature_id, type) DO UPDATE SET content = EXCLUDED.content, updated_at = EXCLUDED.updated_at, name = EXCLUDED.name
+     RETURNING id`,
+    [id, projectId, featureId, type, content, now, name],
   );
+
+  return rows[0].id;
 }
 
 export async function getProjectArtefacts(projectId: string): Promise<ArtefactRow[]> {
@@ -51,6 +57,17 @@ export async function getArtefacts(projectId: string): Promise<ArtefactRow[]> {
   const pool = getPool();
   const { rows } = await pool.query("SELECT * FROM artefacts WHERE project_id = $1", [projectId]);
   return rows;
+}
+
+export async function getArtefactById(id: string): Promise<ArtefactRow | undefined> {
+  const pool = getPool();
+  const { rows } = await pool.query("SELECT * FROM artefacts WHERE id = $1", [id]);
+  return rows[0];
+}
+
+export async function deleteArtefactById(id: string): Promise<void> {
+  const pool = getPool();
+  await pool.query("DELETE FROM artefacts WHERE id = $1", [id]);
 }
 
 export async function deleteDiagramArtefacts(projectId: string, featureId: string = PROJECT_SCOPE): Promise<void> {

@@ -21,16 +21,11 @@ export interface Generator {
 
 export interface ArtefactModuleDefinition {
   type: string;
-  description: string;
-  aliases: string[];
   generator: Generator;
 }
 
 export interface DiagramModuleDefinition {
   type: "diagram";
-  description: string;
-  aliases: string[];
-  planDiagrams(provider: LLMProvider, context: string): Promise<DiagramPlan[]>;
   generateDiagram(
     provider: LLMProvider,
     context: string,

@@ -39,33 +39,3 @@ export function getDiagramModule(): DiagramModuleDefinition | undefined {
     isDiagramModule(m),
   );
 }
-
-const TRIAGE_EXCLUDED = new Set(["stories"]);
-
-export function getTriageDescriptions(): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (const m of modules.values()) {
-    if (TRIAGE_EXCLUDED.has(m.type)) continue;
-    result[m.type] = m.description;
-  }
-  return result;
-}
-
-const TRIAGE_REMAP: Record<string, string> = {
-  stories: "spec",
-  "user stories": "spec",
-  "user-stories": "spec",
-};
-
-export function getNormaliseMap(): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (const m of modules.values()) {
-    if (TRIAGE_EXCLUDED.has(m.type)) continue;
-    result[m.type] = m.type;
-    for (const alias of m.aliases) {
-      result[alias] = m.type;
-    }
-  }
-  Object.assign(result, TRIAGE_REMAP);
-  return result;
-}
