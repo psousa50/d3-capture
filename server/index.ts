@@ -10,7 +10,7 @@ import { getToken } from "next-auth/jwt";
 import { MeetingManager } from "./meeting-manager";
 import { getMeeting } from "./db/repositories/meetings";
 import { getProject } from "./db/repositories/projects";
-import { initDb } from "./db/connection";
+import prisma from "./db/client";
 import { logger } from "./logger";
 
 const log = logger.child({ module: "io" });
@@ -27,7 +27,7 @@ const useHttps = existsSync(certPath) && existsSync(keyPath);
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
-initDb().then(() => app.prepare()).then(() => {
+prisma.$connect().then(() => app.prepare()).then(() => {
   const requestHandler = (req: any, res: any) => {
     const parsedUrl = parse(req.url!, true);
     handle(req, res, parsedUrl);

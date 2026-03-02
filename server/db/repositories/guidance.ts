@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { getPool } from "../connection";
+import prisma from "../client";
 
 export interface GuidanceItem {
   id: string;
@@ -9,32 +9,18 @@ export interface GuidanceItem {
   createdAt: number;
 }
 
-interface GuidanceRow {
-  id: string;
-  meeting_id: string;
-  type: string;
-  content: string;
-  resolved: boolean;
-  created_at: number;
-}
-
-function toItem(row: GuidanceRow): GuidanceItem {
-  return {
-    id: row.id,
-    type: row.type as GuidanceItem["type"],
-    content: row.content,
-    resolved: row.resolved,
-    createdAt: row.created_at,
-  };
-}
-
 export async function getGuidanceItems(meetingId: string): Promise<GuidanceItem[]> {
-  const pool = getPool();
-  const { rows } = await pool.query<GuidanceRow>(
-    "SELECT * FROM guidance_items WHERE meeting_id = $1 ORDER BY created_at ASC",
-    [meetingId],
-  );
-  return rows.map(toItem);
+  const rows = await prisma.guidanceItem.findMany({
+    where: { meetingId },
+    orderBy: { createdAt: "asc" },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    type: r.type as GuidanceItem["type"],
+    content: r.content,
+    resolved: r.resolved,
+    createdAt: r.createdAt as unknown as number,
+  }));
 }
 
 export async function insertGuidanceItems(
@@ -43,28 +29,31 @@ export async function insertGuidanceItems(
 ): Promise<GuidanceItem[]> {
   if (items.length === 0) return [];
 
-  const pool = getPool();
   const now = Date.now();
-  const inserted: GuidanceItem[] = [];
+  const data = items.map((item) => ({
+    id: randomUUID(),
+    meetingId,
+    type: item.type,
+    content: item.content,
+    resolved: false,
+    createdAt: now,
+  }));
 
-  for (const item of items) {
-    const id = randomUUID();
-    await pool.query(
-      "INSERT INTO guidance_items (id, meeting_id, type, content, resolved, created_at) VALUES ($1, $2, $3, $4, FALSE, $5)",
-      [id, meetingId, item.type, item.content, now],
-    );
-    inserted.push({ id, type: item.type, content: item.content, resolved: false, createdAt: now });
-  }
+  await prisma.guidanceItem.createMany({ data });
 
-  return inserted;
+  return data.map((d) => ({
+    id: d.id,
+    type: d.type as GuidanceItem["type"],
+    content: d.content,
+    resolved: false,
+    createdAt: now,
+  }));
 }
 
 export async function resolveGuidanceItem(id: string): Promise<void> {
-  const pool = getPool();
-  await pool.query("UPDATE guidance_items SET resolved = TRUE WHERE id = $1", [id]);
+  await prisma.guidanceItem.update({ where: { id }, data: { resolved: true } });
 }
 
 export async function unresolveGuidanceItem(id: string): Promise<void> {
-  const pool = getPool();
-  await pool.query("UPDATE guidance_items SET resolved = FALSE WHERE id = $1", [id]);
+  await prisma.guidanceItem.update({ where: { id }, data: { resolved: false } });
 }

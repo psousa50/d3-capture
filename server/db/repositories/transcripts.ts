@@ -1,4 +1,4 @@
-import { getPool } from "../connection";
+import prisma from "../client";
 
 export interface TranscriptChunkRow {
   id: number;
@@ -8,30 +8,35 @@ export interface TranscriptChunkRow {
   timestamp: number;
 }
 
+function toChunk(r: { id: bigint; meetingId: string; text: string; speaker: string | null; timestamp: bigint }): TranscriptChunkRow {
+  return {
+    id: r.id as unknown as number,
+    meeting_id: r.meetingId,
+    text: r.text,
+    speaker: r.speaker,
+    timestamp: r.timestamp as unknown as number,
+  };
+}
+
 export async function insertChunk(meetingId: string, text: string, speaker: string | null, timestamp: number): Promise<TranscriptChunkRow> {
-  const pool = getPool();
-  const { rows } = await pool.query(
-    "INSERT INTO transcript_chunks (meeting_id, text, speaker, timestamp) VALUES ($1, $2, $3, $4) RETURNING *",
-    [meetingId, text, speaker, timestamp]
-  );
-  return rows[0];
+  const row = await prisma.transcriptChunk.create({
+    data: { meetingId, text, speaker, timestamp },
+  });
+  return toChunk(row);
 }
 
 export async function getChunks(meetingId: string): Promise<TranscriptChunkRow[]> {
-  const pool = getPool();
-  const { rows } = await pool.query(
-    "SELECT * FROM transcript_chunks WHERE meeting_id = $1 ORDER BY timestamp ASC",
-    [meetingId]
-  );
-  return rows;
+  const rows = await prisma.transcriptChunk.findMany({
+    where: { meetingId },
+    orderBy: { timestamp: "asc" },
+  });
+  return rows.map(toChunk);
 }
 
 export async function updateChunk(id: number, text: string): Promise<void> {
-  const pool = getPool();
-  await pool.query("UPDATE transcript_chunks SET text = $1 WHERE id = $2", [text, id]);
+  await prisma.transcriptChunk.update({ where: { id }, data: { text } });
 }
 
 export async function deleteChunk(id: number): Promise<void> {
-  const pool = getPool();
-  await pool.query("DELETE FROM transcript_chunks WHERE id = $1", [id]);
+  await prisma.transcriptChunk.delete({ where: { id } });
 }

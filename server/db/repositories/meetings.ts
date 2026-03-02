@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { getPool } from "../connection";
+import prisma from "../client";
 
 export interface Meeting {
   id: string;
@@ -10,45 +10,49 @@ export interface Meeting {
   status: "active" | "completed";
 }
 
+function toMeeting(r: { id: string; projectId: string; featureId: string | null; startedAt: bigint; endedAt: bigint | null; status: string }): Meeting {
+  return {
+    id: r.id,
+    project_id: r.projectId,
+    feature_id: r.featureId,
+    started_at: r.startedAt as unknown as number,
+    ended_at: r.endedAt as unknown as number | null,
+    status: r.status as Meeting["status"],
+  };
+}
+
 export async function createMeeting(projectId: string, featureId?: string): Promise<Meeting> {
-  const pool = getPool();
   const id = randomUUID();
   const started_at = Date.now();
 
-  await pool.query(
-    "INSERT INTO meetings (id, project_id, feature_id, started_at, status) VALUES ($1, $2, $3, $4, 'active')",
-    [id, projectId, featureId ?? null, started_at],
-  );
+  await prisma.meeting.create({
+    data: { id, projectId, featureId: featureId ?? null, startedAt: started_at, status: "active" },
+  });
 
   return { id, project_id: projectId, feature_id: featureId ?? null, started_at, ended_at: null, status: "active" };
 }
 
 export async function endMeeting(id: string): Promise<void> {
-  const pool = getPool();
-  await pool.query("UPDATE meetings SET ended_at = $1, status = 'completed' WHERE id = $2", [
-    Date.now(),
-    id,
-  ]);
+  await prisma.meeting.update({
+    where: { id },
+    data: { endedAt: Date.now(), status: "completed" },
+  });
 }
 
 export async function getMeeting(id: string): Promise<Meeting | undefined> {
-  const pool = getPool();
-  const { rows } = await pool.query("SELECT * FROM meetings WHERE id = $1", [id]);
-  return rows[0];
+  const row = await prisma.meeting.findUnique({ where: { id } });
+  if (!row) return undefined;
+  return toMeeting(row);
 }
 
 export async function listMeetings(projectId: string): Promise<Meeting[]> {
-  const pool = getPool();
-  const { rows } = await pool.query(
-    "SELECT * FROM meetings WHERE project_id = $1 ORDER BY started_at DESC",
-    [projectId]
-  );
-  return rows;
+  const rows = await prisma.meeting.findMany({
+    where: { projectId },
+    orderBy: { startedAt: "desc" },
+  });
+  return rows.map(toMeeting);
 }
 
 export async function deleteMeeting(id: string): Promise<void> {
-  const pool = getPool();
-  await pool.query("DELETE FROM transcript_chunks WHERE meeting_id = $1", [id]);
-  await pool.query("DELETE FROM documents WHERE meeting_id = $1", [id]);
-  await pool.query("DELETE FROM meetings WHERE id = $1", [id]);
+  await prisma.meeting.delete({ where: { id } });
 }

@@ -1,120 +1,94 @@
 import { randomUUID } from "crypto";
-import { getPool } from "../connection";
-
-const PROJECT_SCOPE = "__project__";
+import prisma from "../client";
 
 export interface ArtefactRow {
   id: string;
   project_id: string;
-  feature_id: string;
+  feature_id: string | null;
   type: string;
   name: string;
   content: string;
   updated_at: number;
 }
 
+function toRow(r: { id: string; projectId: string; featureId: string | null; type: string; name: string; content: string; updatedAt: bigint }): ArtefactRow {
+  return {
+    id: r.id,
+    project_id: r.projectId,
+    feature_id: r.featureId,
+    type: r.type,
+    name: r.name,
+    content: r.content,
+    updated_at: r.updatedAt as unknown as number,
+  };
+}
+
 export async function upsertArtefact(
   projectId: string,
   type: string,
   content: string,
-  featureId: string = PROJECT_SCOPE,
+  featureId: string | null = null,
   name: string = "",
 ): Promise<string> {
-  const pool = getPool();
   const now = Date.now();
+
+  const existing = await prisma.artefact.findFirst({
+    where: { projectId, featureId, type },
+    select: { id: true },
+  });
+
+  if (existing) {
+    await prisma.artefact.update({
+      where: { id: existing.id },
+      data: { content, updatedAt: now, name },
+    });
+    return existing.id;
+  }
+
   const id = randomUUID();
-
-  const { rows } = await pool.query(
-    `INSERT INTO artefacts (id, project_id, feature_id, type, content, updated_at, name)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
-     ON CONFLICT(project_id, feature_id, type) DO UPDATE SET content = EXCLUDED.content, updated_at = EXCLUDED.updated_at, name = EXCLUDED.name
-     RETURNING id`,
-    [id, projectId, featureId, type, content, now, name],
-  );
-
-  return rows[0].id;
+  await prisma.artefact.create({
+    data: { id, projectId, featureId, type, content, updatedAt: now, name },
+  });
+  return id;
 }
 
 export async function getProjectArtefacts(projectId: string): Promise<ArtefactRow[]> {
-  const pool = getPool();
-  const { rows } = await pool.query(
-    "SELECT * FROM artefacts WHERE project_id = $1 AND feature_id = $2",
-    [projectId, PROJECT_SCOPE],
-  );
-  return rows;
+  const rows = await prisma.artefact.findMany({ where: { projectId, featureId: null } });
+  return rows.map(toRow);
 }
 
 export async function getFeatureArtefacts(projectId: string, featureId: string): Promise<ArtefactRow[]> {
-  const pool = getPool();
-  const { rows } = await pool.query(
-    "SELECT * FROM artefacts WHERE project_id = $1 AND feature_id = $2",
-    [projectId, featureId],
-  );
-  return rows;
+  const rows = await prisma.artefact.findMany({ where: { projectId, featureId } });
+  return rows.map(toRow);
 }
 
 export async function getArtefacts(projectId: string): Promise<ArtefactRow[]> {
-  const pool = getPool();
-  const { rows } = await pool.query("SELECT * FROM artefacts WHERE project_id = $1", [projectId]);
-  return rows;
+  const rows = await prisma.artefact.findMany({ where: { projectId } });
+  return rows.map(toRow);
 }
 
 export async function getArtefactById(id: string): Promise<ArtefactRow | undefined> {
-  const pool = getPool();
-  const { rows } = await pool.query("SELECT * FROM artefacts WHERE id = $1", [id]);
-  return rows[0];
+  const row = await prisma.artefact.findUnique({ where: { id } });
+  if (!row) return undefined;
+  return toRow(row);
 }
 
 export async function deleteArtefactById(id: string): Promise<void> {
-  const pool = getPool();
-  await pool.query("DELETE FROM artefacts WHERE id = $1", [id]);
+  await prisma.artefact.delete({ where: { id } });
 }
 
-export async function deleteDiagramArtefacts(projectId: string, featureId: string = PROJECT_SCOPE): Promise<void> {
-  const pool = getPool();
-  await pool.query(
-    "DELETE FROM artefacts WHERE project_id = $1 AND feature_id = $2 AND type LIKE 'diagram:%'",
-    [projectId, featureId],
-  );
+export async function deleteDiagramArtefacts(projectId: string, featureId: string | null = null): Promise<void> {
+  await prisma.artefact.deleteMany({
+    where: { projectId, featureId, type: { startsWith: "diagram:" } },
+  });
 }
 
-export async function deleteArtefact(projectId: string, type: string, featureId: string = PROJECT_SCOPE): Promise<void> {
-  const pool = getPool();
-  await pool.query(
-    "DELETE FROM artefacts WHERE project_id = $1 AND feature_id = $2 AND type = $3",
-    [projectId, featureId, type],
-  );
+export async function deleteArtefact(projectId: string, type: string, featureId: string | null = null): Promise<void> {
+  await prisma.artefact.deleteMany({ where: { projectId, featureId, type } });
 }
 
-export interface FeatureDiagramRow {
-  feature_id: string;
-  feature_name: string;
-  type: string;
-  content: string;
-}
-
-export async function getFeatureDiagramsByType(
-  projectId: string,
-  diagramType: string,
-): Promise<FeatureDiagramRow[]> {
-  const pool = getPool();
-  const { rows } = await pool.query(
-    `SELECT a.feature_id, f.name AS feature_name, a.type, a.content
-     FROM artefacts a
-     JOIN features f ON a.feature_id = f.id
-     WHERE a.project_id = $1
-       AND a.type = $2
-       AND a.feature_id != $3`,
-    [projectId, diagramType, PROJECT_SCOPE],
-  );
-  return rows;
-}
-
-export async function getArtefact(projectId: string, type: string, featureId: string = PROJECT_SCOPE): Promise<ArtefactRow | undefined> {
-  const pool = getPool();
-  const { rows } = await pool.query(
-    "SELECT * FROM artefacts WHERE project_id = $1 AND feature_id = $2 AND type = $3",
-    [projectId, featureId, type],
-  );
-  return rows[0];
+export async function getArtefact(projectId: string, type: string, featureId: string | null = null): Promise<ArtefactRow | undefined> {
+  const row = await prisma.artefact.findFirst({ where: { projectId, featureId, type } });
+  if (!row) return undefined;
+  return toRow(row);
 }

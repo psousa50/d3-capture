@@ -16,7 +16,6 @@ import { logger } from "./logger";
 
 const log = logger.child({ module: "context" });
 
-const PROJECT_SCOPE = "__project__";
 const VERBATIM_WINDOW_MS = 5 * 60 * 1000;
 const SUMMARISE_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -150,9 +149,9 @@ export class ContextManager {
   }
 
   async updateArtefact(type: string, content: string, name?: string) {
-    const scope = this.featureId ?? PROJECT_SCOPE;
+    const scope = this.featureId ?? null;
     const isProjectContext = type === "context" && this.featureId;
-    const featureId = isProjectContext ? PROJECT_SCOPE : scope;
+    const featureId = isProjectContext ? null : scope;
 
     const entry = this.artefactEntries.get(type);
     const artefactName = name ?? entry?.name ?? "";
@@ -172,7 +171,7 @@ export class ContextManager {
     const entry = this.findEntryByType(type, "project");
     const artefactName = name ?? entry?.name ?? "";
 
-    const id = await upsertArtefact(this.projectId, type, content, PROJECT_SCOPE, artefactName);
+    const id = await upsertArtefact(this.projectId, type, content, null, artefactName);
 
     const mapKey = this.featureId ? `project:${type}` : type;
     this.artefactEntries.set(mapKey, {
@@ -306,13 +305,13 @@ export class ContextManager {
         this.artefactEntries.delete(key);
       }
     }
-    await deleteDiagramArtefacts(this.projectId, this.featureId ?? PROJECT_SCOPE);
+    await deleteDiagramArtefacts(this.projectId, this.featureId ?? null);
   }
 
   async clearSingleDiagram(diagramType: string) {
     const fullType = `diagram:${diagramType}`;
     this.artefactEntries.delete(fullType);
-    await deleteArtefact(this.projectId, fullType, this.featureId ?? PROJECT_SCOPE);
+    await deleteArtefact(this.projectId, fullType, this.featureId ?? null);
   }
 
   private async maybeSummarise() {

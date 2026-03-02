@@ -2,7 +2,7 @@
 
 Real-time meeting assistant that transcribes audio, generates specs/stories/diagrams via LLM, and streams results to all participants.
 
-**Stack:** Next.js 16, React 19, Socket.IO 4, PostgreSQL (pg), multi-provider STT (Deepgram/Voxtral), multi-provider LLM (Anthropic/OpenAI/Groq), Tailwind CSS 4, TypeScript strict.
+**Stack:** Next.js 16, React 19, Socket.IO 4, PostgreSQL (Prisma), multi-provider STT (Deepgram/Voxtral), multi-provider LLM (Anthropic/OpenAI/Groq), Tailwind CSS 4, TypeScript strict.
 
 ## Directory structure
 
@@ -30,8 +30,7 @@ server/
 │   ├── openai-compatible.ts     Generic OpenAI-compatible provider (Groq)
 │   └── claude-code.ts           Claude Code CLI provider (uses Max subscription via `claude -p`)
 ├── db/
-│   ├── connection.ts            PostgreSQL pool singleton, BIGINT type parser
-│   ├── schema.ts                Table creation and migrations (async)
+│   ├── client.ts                Prisma client singleton with BigInt-to-Number extension
 │   └── repositories/            CRUD per entity: projects, features, meetings, transcripts, artefacts, documents, guidance
 └── ws.d.ts
 
@@ -146,11 +145,12 @@ projects (id, name, created_at)
     └── meetings (id, project_id, feature_id?, started_at, ended_at, status, pending_transcript)
             ├── transcript_chunks (id auto, meeting_id, text, speaker, timestamp)
             ├── documents (id, meeting_id, content, created_at, name, doc_number)
-            └── guidance_items (id, meeting_id, type, content, resolved, created_at) ON DELETE CASCADE
-    └── artefacts (id, project_id, feature_id, type, name, content, updated_at)
-            — feature_id='__project__' for project-level artefacts
+            └── guidance_items (id, meeting_id, type, content, resolved, created_at)
+All child foreign keys use ON DELETE CASCADE (meetings cascade to project/feature deletes, chunks/documents/guidance cascade to meeting deletes, artefacts cascade to project/feature deletes).
+    └── artefacts (id, project_id, feature_id?, type, name, content, updated_at)
+            — feature_id=NULL for project-level artefacts
             — feature_id=<uuid> for feature-level artefacts
-            — UNIQUE(project_id, feature_id, type)
+            — UNIQUE(project_id, feature_id, type) NULLS NOT DISTINCT
 ```
 
 ## API surface
@@ -209,7 +209,8 @@ Google OAuth via NextAuth.js v4. `NEXTAUTH_SECRET` + `GOOGLE_CLIENT_ID` + `GOOGL
 - **Project context as background** — the `context` artefact provides project-level background (vision, goals, scope, domain) that is automatically included in spec generation prompts for feature meetings
 - **Tool-use routing** — a single LLM call with tool definitions replaces the triage classifier; scope is enforced by which tools are exposed (feature meetings get `update_spec` and `update_project_diagram`); diagrams are referenced by database ID
 - **Module system** — each artefact type is a self-contained module in `modules/` with prompts, generator, and definition; registry-driven discovery
-- **Repository pattern** — one module per DB entity in `server/db/repositories/`
+- **Prisma ORM** — schema in `prisma/schema.prisma`, migrations in `prisma/migrations/`, generated client in `src/generated/prisma`
+- **Repository pattern** — one module per DB entity in `server/db/repositories/`, thin wrappers over Prisma client
 - **Room-based broadcasting** — Socket.IO rooms per meeting (`meeting:{id}`)
 - **Guidance runs independently** — not gated by the artefact generation lock; lightweight JSON output parsed server-side, meeting-scoped
 - **Nova (AI assistant) runs independently** — triggered by name mention ("Nova"), uses Anthropic tool-use agent loop with web search; responses stored as transcript chunks (speaker="Nova")

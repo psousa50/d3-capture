@@ -1,0 +1,112 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Project {
+  id        String @id
+  name      String
+  createdAt BigInt @map("created_at") @db.BigInt
+
+  features  Feature[]
+  meetings  Meeting[]
+  artefacts Artefact[]
+
+  @@map("projects")
+}
+
+model Feature {
+  id        String @id
+  projectId String @map("project_id")
+  name      String
+  createdAt BigInt @map("created_at") @db.BigInt
+
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  meetings  Meeting[]
+  artefacts Artefact[]
+
+  @@index([projectId], map: "idx_features_project")
+  @@map("features")
+}
+
+model Meeting {
+  id                String  @id
+  projectId         String  @map("project_id")
+  featureId         String? @map("feature_id")
+  startedAt         BigInt  @map("started_at") @db.BigInt
+  endedAt           BigInt? @map("ended_at") @db.BigInt
+  status            String  @default("active")
+  pendingTranscript String? @map("pending_transcript")
+
+  project          Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  feature          Feature?          @relation(fields: [featureId], references: [id], onDelete: SetNull)
+  transcriptChunks TranscriptChunk[]
+  documents        Document[]
+  guidanceItems    GuidanceItem[]
+
+  @@index([projectId], map: "idx_meetings_project")
+  @@map("meetings")
+}
+
+model TranscriptChunk {
+  id        BigInt  @id @default(autoincrement())
+  meetingId String  @map("meeting_id")
+  text      String
+  speaker   String?
+  timestamp BigInt  @db.BigInt
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId], map: "idx_transcript_meeting")
+  @@map("transcript_chunks")
+}
+
+model Artefact {
+  id        String  @id
+  projectId String  @map("project_id")
+  featureId String? @map("feature_id")
+  type      String
+  name      String  @default("")
+  content   String
+  updatedAt BigInt  @map("updated_at") @db.BigInt
+
+  project Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  feature Feature? @relation(fields: [featureId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, featureId, type], map: "idx_artefacts_scope_type")
+  @@index([projectId], map: "idx_artefacts_project")
+  @@index([featureId], map: "idx_artefacts_feature")
+  @@map("artefacts")
+}
+
+model Document {
+  id        String @id
+  meetingId String @map("meeting_id")
+  content   String
+  createdAt BigInt @map("created_at") @db.BigInt
+  name      String @default("")
+  docNumber Int    @default(0) @map("doc_number")
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId], map: "idx_documents_meeting")
+  @@map("documents")
+}
+
+model GuidanceItem {
+  id        String  @id
+  meetingId String  @map("meeting_id")
+  type      String
+  content   String
+  resolved  Boolean @default(false)
+  createdAt BigInt  @map("created_at") @db.BigInt
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId], map: "idx_guidance_meeting")
+  @@map("guidance_items")
+}
