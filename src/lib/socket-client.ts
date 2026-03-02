@@ -45,6 +45,8 @@ export interface MeetingSnapshot {
   documents: DocumentEntry[];
   guidance: GuidanceItem[];
   scope?: "project" | "feature";
+  projectName?: string;
+  featureName?: string;
 }
 
 export interface Participant {

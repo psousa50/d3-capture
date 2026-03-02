@@ -3,6 +3,8 @@ import { AudioHandler } from "./audio-handler";
 import { endMeeting } from "./db/repositories/meetings";
 import { getChunks, updateChunk, deleteChunk } from "./db/repositories/transcripts";
 import { getProjectArtefacts, getFeatureArtefacts, getArtefact } from "./db/repositories/artefacts";
+import { getProject } from "./db/repositories/projects";
+import { getFeature } from "./db/repositories/features";
 import { getDocuments, deleteDocument } from "./db/repositories/documents";
 import { getGuidanceItems, resolveGuidanceItem, unresolveGuidanceItem } from "./db/repositories/guidance";
 import { logger } from "./logger";
@@ -199,11 +201,13 @@ export class MeetingManager {
       ? getFeatureArtefacts(projectId, featureId)
       : getProjectArtefacts(projectId);
 
-    const [chunks, artefactRows, docs, guidanceRows] = await Promise.all([
+    const [chunks, artefactRows, docs, guidanceRows, project, feature] = await Promise.all([
       getChunks(meetingId),
       artefactPromise,
       getDocuments(meetingId),
       getGuidanceItems(meetingId),
+      getProject(projectId),
+      featureId ? getFeature(featureId) : Promise.resolve(undefined),
     ]);
 
     const transcript = chunks.map((c) => ({
@@ -238,7 +242,11 @@ export class MeetingManager {
     }));
 
     const scope = featureId ? "feature" : "project";
-    socket.emit("meeting-state", { transcript, artefacts, artefactMeta, documents, guidance: guidanceRows, scope });
+    socket.emit("meeting-state", {
+      transcript, artefacts, artefactMeta, documents, guidance: guidanceRows, scope,
+      projectName: project?.name,
+      featureName: feature?.name,
+    });
   }
 
   private async shutdownMeeting(meetingId: string) {

@@ -60,6 +60,8 @@ export function useMeeting() {
   const [elapsed, setElapsed] = useState(0);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [scope, setScope] = useState<"project" | "feature">("project");
+  const [projectName, setProjectName] = useState<string | null>(null);
+  const [featureName, setFeatureName] = useState<string | null>(null);
 
   const socketRef = useRef<MeetingSocket | null>(null);
   const audioRef = useRef<AudioCapture | null>(null);
@@ -191,6 +193,8 @@ export function useMeeting() {
     setDocuments(snapshot.documents ?? []);
     setGuidance(snapshot.guidance ?? []);
     if (snapshot.scope) setScope(snapshot.scope);
+    if (snapshot.projectName) setProjectName(snapshot.projectName);
+    if (snapshot.featureName) setFeatureName(snapshot.featureName);
 
     setArtefacts((prev) => {
       const next = { ...prev };
@@ -386,6 +390,8 @@ export function useMeeting() {
   return {
     status,
     scope,
+    projectName,
+    featureName,
     transcript,
     artefacts,
     documents,
