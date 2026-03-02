@@ -16,6 +16,7 @@ export default function MeetingPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [transcriptCollapsed, setTranscriptCollapsed] = useState(false);
   const [guidanceCollapsed, setGuidanceCollapsed] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
   const {
     status, scope, projectName, featureName, transcript, artefacts, documents, guidance, participants, error, elapsed,
     startMeeting, startRecording, stopRecording, stopMeeting,
@@ -57,6 +58,32 @@ export default function MeetingPage() {
 
         <div className="flex items-center gap-4">
           <PresenceIndicator participants={participants} />
+
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(window.location.href);
+              setLinkCopied(true);
+              setTimeout(() => setLinkCopied(false), 2000);
+            }}
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-zinc-500 transition-all hover:bg-zinc-800/50 hover:text-zinc-300"
+          >
+            {linkCopied ? (
+              <>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                Copied
+              </>
+            ) : (
+              <>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                </svg>
+                Copy link
+              </>
+            )}
+          </button>
 
           {isActive && (
             <button
