@@ -11,6 +11,7 @@ export interface TranscriptEntry {
   text: string;
   speaker?: string | number | null;
   isFinal: boolean;
+  timestamp?: number;
 }
 
 export interface ArtefactState {
@@ -25,6 +26,7 @@ export interface DiagramState extends ArtefactState {
 }
 
 export interface MeetingArtefacts {
+  context: ArtefactState;
   spec: ArtefactState;
   stories: ArtefactState;
   diagrams: Record<string, DiagramState>;
@@ -45,6 +47,7 @@ export function useMeeting() {
   const [status, setStatus] = useState<MeetingStatus>("idle");
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [artefacts, setArtefacts] = useState<MeetingArtefacts>({
+    context: { ...EMPTY_ARTEFACT },
     spec: { ...EMPTY_ARTEFACT },
     stories: { ...EMPTY_ARTEFACT },
     diagrams: {},
@@ -56,6 +59,7 @@ export function useMeeting() {
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [participants, setParticipants] = useState<Participant[]>([]);
+  const [scope, setScope] = useState<"project" | "feature">("project");
 
   const socketRef = useRef<MeetingSocket | null>(null);
   const audioRef = useRef<AudioCapture | null>(null);
@@ -83,7 +87,7 @@ export function useMeeting() {
     } else {
       setArtefacts((prev) => ({
         ...prev,
-        [key]: { ...prev[key as "spec" | "stories"], updating: true, pendingContent: "" },
+        [key]: { ...prev[key as "context" | "spec" | "stories"], updating: true, pendingContent: "" },
       }));
     }
   }, []);
@@ -106,8 +110,8 @@ export function useMeeting() {
       setArtefacts((prev) => ({
         ...prev,
         [key]: {
-          ...prev[key as "spec" | "stories"],
-          pendingContent: prev[key as "spec" | "stories"].pendingContent + (data.chunk ?? ""),
+          ...prev[key as "context" | "spec" | "stories"],
+          pendingContent: prev[key as "context" | "spec" | "stories"].pendingContent + (data.chunk ?? ""),
         },
       }));
     }
@@ -159,7 +163,7 @@ export function useMeeting() {
     } else {
       setArtefacts((prev) => ({
         ...prev,
-        [key]: { ...prev[key as "spec" | "stories"], updating: false },
+        [key]: { ...prev[key as "context" | "spec" | "stories"], updating: false },
       }));
     }
   }, []);
@@ -181,15 +185,17 @@ export function useMeeting() {
       text: t.text,
       speaker: t.speaker,
       isFinal: t.isFinal,
+      timestamp: t.timestamp,
     })));
 
     setDocuments(snapshot.documents ?? []);
     setGuidance(snapshot.guidance ?? []);
+    if (snapshot.scope) setScope(snapshot.scope);
 
     setArtefacts((prev) => {
       const next = { ...prev };
       for (const [type, content] of Object.entries(snapshot.artefacts)) {
-        if (type === "spec" || type === "stories") {
+        if (type === "context" || type === "spec" || type === "stories") {
           next[type] = { content, updating: false, pendingContent: "" };
         } else if (type.startsWith("diagram:")) {
           const subType = type.slice("diagram:".length);
@@ -218,7 +224,7 @@ export function useMeeting() {
 
       const socket = new MeetingSocket();
       socketRef.current = socket;
-      await socket.connect(meetingId, "producer");
+      socket.init(meetingId, "producer");
 
       socket.onMeetingState(handleMeetingState);
       socket.onLiveTranscript((data) => {
@@ -228,6 +234,7 @@ export function useMeeting() {
             text: data.text,
             speaker: data.speaker,
             isFinal: data.isFinal,
+            timestamp: data.timestamp ?? Date.now(),
           };
           if (!data.isFinal && prev.length > 0 && !prev[prev.length - 1].isFinal) {
             return [...prev.slice(0, -1), entry];
@@ -270,6 +277,8 @@ export function useMeeting() {
       socket.onGuidanceItemUnresolved(({ id }) => {
         setGuidance((prev) => prev.map((g) => (g.id === id ? { ...g, resolved: false } : g)));
       });
+
+      await socket.connect();
 
       setStatus("connected");
     } catch (err) {
@@ -374,6 +383,7 @@ export function useMeeting() {
 
   return {
     status,
+    scope,
     transcript,
     artefacts,
     documents,

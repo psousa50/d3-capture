@@ -94,10 +94,12 @@ initDb().then(() => app.prepare()).then(() => {
 
     log.info({ role: role || "producer", socketId: socket.id, meetingId }, "connected");
 
+    const featureId = meeting.feature_id ?? null;
+
     if (role === "viewer") {
-      meetingManager.joinAsViewer(socket, project.id, meetingId);
+      meetingManager.joinAsViewer(socket, project.id, meetingId, featureId);
     } else {
-      meetingManager.joinAsProducer(socket, project.id, meetingId);
+      meetingManager.joinAsProducer(socket, project.id, meetingId, featureId);
     }
 
     socket.on("disconnect", () => {

@@ -2,7 +2,7 @@ import type { Server, Socket } from "socket.io";
 import { AudioHandler } from "./audio-handler";
 import { endMeeting } from "./db/repositories/meetings";
 import { getChunks, updateChunk, deleteChunk } from "./db/repositories/transcripts";
-import { getArtefacts } from "./db/repositories/artefacts";
+import { getProjectArtefacts, getFeatureArtefacts, getArtefact } from "./db/repositories/artefacts";
 import { getDocuments, deleteDocument } from "./db/repositories/documents";
 import { getGuidanceItems, resolveGuidanceItem, unresolveGuidanceItem } from "./db/repositories/guidance";
 import { logger } from "./logger";
@@ -12,6 +12,7 @@ const DISCONNECT_GRACE_MS = 30_000;
 interface ActiveMeeting {
   projectId: string;
   meetingId: string;
+  featureId: string | null;
   handler: AudioHandler;
   producers: Map<string, string | null>;
   viewers: Map<string, string | null>;
@@ -26,9 +27,9 @@ export class MeetingManager {
     this.io = io;
   }
 
-  joinAsProducer(socket: Socket, projectId: string, meetingId: string) {
+  joinAsProducer(socket: Socket, projectId: string, meetingId: string, featureId: string | null) {
     const room = this.roomKey(meetingId);
-    const active = this.getOrCreateMeeting(projectId, meetingId);
+    const active = this.getOrCreateMeeting(projectId, meetingId, featureId);
 
     if (active.disconnectTimer) {
       clearTimeout(active.disconnectTimer);
@@ -42,7 +43,7 @@ export class MeetingManager {
     socket.data.role = "producer";
 
     const log = logger.child({ module: "meeting", meetingId });
-    this.sendSnapshot(socket, meetingId, projectId).catch((err) => log.error({ err }, "snapshot failed"));
+    this.sendSnapshot(socket, meetingId, projectId, featureId).catch((err) => log.error({ err }, "snapshot failed"));
     this.broadcastPresence(active);
 
     socket.on("start-recording", () => {
@@ -120,7 +121,7 @@ export class MeetingManager {
     log.info({ socketId: socket.id, total: active.producers.size }, "producer joined");
   }
 
-  joinAsViewer(socket: Socket, projectId: string, meetingId: string) {
+  joinAsViewer(socket: Socket, projectId: string, meetingId: string, featureId: string | null) {
     const room = this.roomKey(meetingId);
     const active = this.meetings.get(meetingId);
 
@@ -133,7 +134,7 @@ export class MeetingManager {
     }
 
     const viewerLog = logger.child({ module: "meeting", meetingId });
-    this.sendSnapshot(socket, meetingId, projectId).catch((err) => viewerLog.error({ err }, "snapshot failed"));
+    this.sendSnapshot(socket, meetingId, projectId, featureId).catch((err) => viewerLog.error({ err }, "snapshot failed"));
     if (active) this.broadcastPresence(active);
 
     viewerLog.info({ socketId: socket.id }, "viewer joined");
@@ -171,17 +172,18 @@ export class MeetingManager {
     return this.meetings.get(meetingId);
   }
 
-  private getOrCreateMeeting(projectId: string, meetingId: string): ActiveMeeting {
+  private getOrCreateMeeting(projectId: string, meetingId: string, featureId: string | null): ActiveMeeting {
     const existing = this.meetings.get(meetingId);
     if (existing) return existing;
 
     const room = this.roomKey(meetingId);
-    const handler = new AudioHandler(this.io, room, projectId, meetingId);
+    const handler = new AudioHandler(this.io, room, projectId, meetingId, featureId);
     handler.start();
 
     const active: ActiveMeeting = {
       projectId,
       meetingId,
+      featureId,
       handler,
       producers: new Map(),
       viewers: new Map(),
@@ -192,10 +194,14 @@ export class MeetingManager {
     return active;
   }
 
-  private async sendSnapshot(socket: Socket, meetingId: string, projectId: string) {
+  private async sendSnapshot(socket: Socket, meetingId: string, projectId: string, featureId: string | null) {
+    const artefactPromise = featureId
+      ? getFeatureArtefacts(projectId, featureId)
+      : getProjectArtefacts(projectId);
+
     const [chunks, artefactRows, docs, guidanceRows] = await Promise.all([
       getChunks(meetingId),
-      getArtefacts(projectId),
+      artefactPromise,
       getDocuments(meetingId),
       getGuidanceItems(meetingId),
     ]);
@@ -205,11 +211,19 @@ export class MeetingManager {
       text: c.text,
       speaker: c.speaker,
       isFinal: true,
+      timestamp: c.timestamp,
     }));
 
     const artefacts: Record<string, string> = {};
     for (const row of artefactRows) {
       artefacts[row.type] = row.content;
+    }
+
+    if (featureId) {
+      const contextRow = await getArtefact(projectId, "context");
+      if (contextRow) {
+        artefacts["context"] = contextRow.content;
+      }
     }
 
     const documents = docs.map((d) => ({
@@ -220,7 +234,8 @@ export class MeetingManager {
       docNumber: d.doc_number,
     }));
 
-    socket.emit("meeting-state", { transcript, artefacts, documents, guidance: guidanceRows });
+    const scope = featureId ? "feature" : "project";
+    socket.emit("meeting-state", { transcript, artefacts, documents, guidance: guidanceRows, scope });
   }
 
   private async shutdownMeeting(meetingId: string) {

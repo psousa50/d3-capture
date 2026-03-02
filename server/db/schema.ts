@@ -31,13 +31,22 @@ export async function migrate(pool: Pool) {
   `);
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS features (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES projects(id),
+      name TEXT NOT NULL,
+      created_at BIGINT NOT NULL
+    )
+  `);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS artefacts (
       id TEXT PRIMARY KEY,
       project_id TEXT NOT NULL REFERENCES projects(id),
       type TEXT NOT NULL,
       content TEXT NOT NULL,
       updated_at BIGINT NOT NULL,
-      UNIQUE(project_id, type)
+      feature_id TEXT NOT NULL DEFAULT '__project__'
     )
   `);
 
@@ -70,4 +79,18 @@ export async function migrate(pool: Pool) {
 
   await pool.query(`ALTER TABLE documents ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT ''`);
   await pool.query(`ALTER TABLE documents ADD COLUMN IF NOT EXISTS doc_number INTEGER NOT NULL DEFAULT 0`);
+
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_features_project ON features(project_id)`);
+  await pool.query(`ALTER TABLE meetings ADD COLUMN IF NOT EXISTS feature_id TEXT REFERENCES features(id)`);
+  await pool.query(`ALTER TABLE artefacts ADD COLUMN IF NOT EXISTS feature_id TEXT NOT NULL DEFAULT '__project__'`);
+
+  await pool.query(`
+    DO $$ BEGIN
+      ALTER TABLE artefacts DROP CONSTRAINT IF EXISTS artefacts_project_id_type_key;
+    EXCEPTION WHEN undefined_object THEN NULL;
+    END $$
+  `);
+
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_artefacts_scope_type ON artefacts(project_id, feature_id, type)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_artefacts_feature ON artefacts(feature_id)`);
 }

@@ -2,6 +2,12 @@
 description: Create a feature specification from the transcript below. Outputs a unified markdown document containing both Product and Technical sections. Fills only known information and marks uncertainties. No user interaction — runs to completion automatically.
 ---
 
+## Project Background
+
+{{PROJECT_CONTEXT}}
+
+---
+
 ## Input
 
 {{TRANSCRIPT}}
@@ -17,6 +23,8 @@ description: Create a feature specification from the transcript below. Outputs a
 ## Instructions
 
 Read the Input above and generate a complete specification using the Template below. Run to completion without asking any questions.
+
+**The Project Background section is context only — use it to understand the project but do NOT reproduce it in the output.**
 
 **Derive the title from the input. Do not ask for confirmation.**
 

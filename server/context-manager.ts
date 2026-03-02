@@ -1,12 +1,20 @@
 import { AccumulatedTranscript } from "./transcript-accumulator";
 import { getProviderForGenerator } from "./llm/config";
-import { getArtefacts, upsertArtefact, deleteDiagramArtefacts, deleteArtefact } from "./db/repositories/artefacts";
+import {
+  upsertArtefact,
+  deleteDiagramArtefacts,
+  deleteArtefact,
+  getProjectArtefacts,
+  getFeatureArtefacts,
+  getArtefact,
+} from "./db/repositories/artefacts";
 import { getChunks } from "./db/repositories/transcripts";
 import { getDocuments } from "./db/repositories/documents";
 import { logger } from "./logger";
 
 const log = logger.child({ module: "context" });
 
+const PROJECT_SCOPE = "__project__";
 const VERBATIM_WINDOW_MS = 5 * 60 * 1000;
 const SUMMARISE_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -18,21 +26,34 @@ interface ContextWindow {
 
 export class ContextManager {
   private projectId: string;
+  private featureId: string | null;
   private transcripts: AccumulatedTranscript[] = [];
   private summary = "";
   private artefactStates: Record<string, string> = {};
   private lastSummarisedAt: number = Date.now();
   private summarising = false;
 
-  constructor(projectId: string, meetingId: string) {
+  constructor(projectId: string, meetingId: string, featureId: string | null) {
     this.projectId = projectId;
+    this.featureId = featureId;
     this.hydrate(meetingId).catch((err) => log.error({ err }, "hydration failed"));
   }
 
   private async hydrate(meetingId: string) {
-    const rows = await getArtefacts(this.projectId);
-    for (const row of rows) {
-      this.artefactStates[row.type] = row.content;
+    if (this.featureId) {
+      const featureRows = await getFeatureArtefacts(this.projectId, this.featureId);
+      for (const row of featureRows) {
+        this.artefactStates[row.type] = row.content;
+      }
+      const contextRow = await getArtefact(this.projectId, "context");
+      if (contextRow) {
+        this.artefactStates["context"] = contextRow.content;
+      }
+    } else {
+      const rows = await getProjectArtefacts(this.projectId);
+      for (const row of rows) {
+        this.artefactStates[row.type] = row.content;
+      }
     }
 
     const chunks = await getChunks(meetingId);
@@ -57,6 +78,14 @@ export class ContextManager {
     }
   }
 
+  getProjectId(): string {
+    return this.projectId;
+  }
+
+  getFeatureId(): string | null {
+    return this.featureId;
+  }
+
   addTranscript(transcript: AccumulatedTranscript) {
     this.transcripts.push(transcript);
     this.maybeSummarise();
@@ -64,7 +93,12 @@ export class ContextManager {
 
   async updateArtefact(type: string, content: string) {
     this.artefactStates[type] = content;
-    await upsertArtefact(this.projectId, type, content);
+    const scope = this.featureId ?? PROJECT_SCOPE;
+    if (type === "context" && this.featureId) {
+      await upsertArtefact(this.projectId, type, content, PROJECT_SCOPE);
+    } else {
+      await upsertArtefact(this.projectId, type, content, scope);
+    }
   }
 
   getContext(): ContextWindow {
@@ -126,12 +160,12 @@ export class ContextManager {
         delete this.artefactStates[key];
       }
     }
-    await deleteDiagramArtefacts(this.projectId);
+    await deleteDiagramArtefacts(this.projectId, this.featureId ?? PROJECT_SCOPE);
   }
 
   async clearSingleDiagram(diagramType: string) {
     delete this.artefactStates[`diagram:${diagramType}`];
-    await deleteArtefact(this.projectId, `diagram:${diagramType}`);
+    await deleteArtefact(this.projectId, `diagram:${diagramType}`, this.featureId ?? PROJECT_SCOPE);
   }
 
   private async maybeSummarise() {

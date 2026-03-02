@@ -17,7 +17,7 @@ export default function MeetingPage() {
   const [transcriptCollapsed, setTranscriptCollapsed] = useState(false);
   const [guidanceCollapsed, setGuidanceCollapsed] = useState(false);
   const {
-    status, transcript, artefacts, documents, guidance, participants, error, elapsed,
+    status, scope, transcript, artefacts, documents, guidance, participants, error, elapsed,
     startMeeting, startRecording, stopRecording, stopMeeting,
     sendText, importTranscript, regenerateDiagrams, regenerateDiagram, editTranscript, deleteTranscript, deleteDocument,
     resolveGuidanceItem, unresolveGuidanceItem,
@@ -90,6 +90,10 @@ export default function MeetingPage() {
           <ArtefactTabs
             artefacts={artefacts}
             documents={documents}
+            visibleTabs={scope === "feature"
+              ? ["spec", "stories", "diagrams", "transcripts"]
+              : ["context", "diagrams", "transcripts"]
+            }
             onDeleteDocument={deleteDocument}
             onRegenerateDiagrams={regenerateDiagrams}
             onRegenerateDiagram={regenerateDiagram}

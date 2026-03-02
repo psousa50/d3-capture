@@ -152,11 +152,17 @@ interface GroupedEntry {
   isFinal: boolean;
 }
 
+const GROUP_GAP_MS = 60_000;
+
 function groupConsecutiveEntries(entries: TranscriptEntry[]): GroupedEntry[] {
   const groups: GroupedEntry[] = [];
   for (const entry of entries) {
     const last = groups[groups.length - 1];
-    if (last && last.speaker === entry.speaker && last.isFinal && entry.isFinal) {
+    const lastEntry = last?.entries[last.entries.length - 1];
+    const timeDelta = lastEntry?.timestamp && entry.timestamp
+      ? entry.timestamp - lastEntry.timestamp
+      : 0;
+    if (last && last.speaker === entry.speaker && last.isFinal && entry.isFinal && timeDelta < GROUP_GAP_MS) {
       last.entries.push(entry);
       last.text += " " + entry.text;
     } else {

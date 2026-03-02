@@ -1,8 +1,8 @@
 import WebSocket from "ws";
-import { voxtralLogger } from "../logger";
+import { sttLogger } from "../logger";
 import type { STTProvider, STTStream, STTStreamOptions } from "./types";
 
-const log = voxtralLogger.child({ module: "stt:voxtral" });
+const log = sttLogger.child({ module: "stt:voxtral" });
 
 const DEFAULT_BASE_URL = "wss://api.mistral.ai";
 const MODEL = "voxtral-mini-transcribe-realtime-2602";
@@ -52,6 +52,7 @@ export class VoxtralProvider implements STTProvider {
 
         case "transcription.done":
           if (data.text) {
+            log.info({ text: data.text }, "transcript");
             buffer = "";
             options.onTranscript({ text: data.text, isFinal: true });
           }

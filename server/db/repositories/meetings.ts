@@ -4,22 +4,23 @@ import { getPool } from "../connection";
 export interface Meeting {
   id: string;
   project_id: string;
+  feature_id: string | null;
   started_at: number;
   ended_at: number | null;
   status: "active" | "completed";
 }
 
-export async function createMeeting(projectId: string): Promise<Meeting> {
+export async function createMeeting(projectId: string, featureId?: string): Promise<Meeting> {
   const pool = getPool();
   const id = randomUUID();
   const started_at = Date.now();
 
   await pool.query(
-    "INSERT INTO meetings (id, project_id, started_at, status) VALUES ($1, $2, $3, 'active')",
-    [id, projectId, started_at]
+    "INSERT INTO meetings (id, project_id, feature_id, started_at, status) VALUES ($1, $2, $3, $4, 'active')",
+    [id, projectId, featureId ?? null, started_at],
   );
 
-  return { id, project_id: projectId, started_at, ended_at: null, status: "active" };
+  return { id, project_id: projectId, feature_id: featureId ?? null, started_at, ended_at: null, status: "active" };
 }
 
 export async function endMeeting(id: string): Promise<void> {

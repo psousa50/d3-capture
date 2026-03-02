@@ -16,12 +16,12 @@ export const promptLogger = pino({
   },
 });
 
-export const voxtralLogger = pino({
+export const sttLogger = pino({
   level: "debug",
   transport: {
     targets: [
       { target: "pino/file", options: { destination: 1 }, level: stdoutLevel },
-      { target: "pino/file", options: { destination: ".logs/voxtral.log", mkdir: true }, level: "debug" },
+      { target: "pino/file", options: { destination: ".logs/stt.log", mkdir: true }, level: "debug" },
     ],
   },
 });

@@ -12,7 +12,8 @@ function normalise(raw: string, artefactTypes: string[]): string | null {
   const key = raw.toLowerCase().trim();
   if (key.startsWith(NEW_DIAGRAM_PREFIX) && key.length > NEW_DIAGRAM_PREFIX.length) return key;
   if (key.startsWith(DELETE_DIAGRAM_PREFIX) && key.length > DELETE_DIAGRAM_PREFIX.length) return key;
-  if (artefactTypes.includes(key)) return key;
+  const match = artefactTypes.find((t) => t.toLowerCase() === key);
+  if (match) return match;
   const map = getNormaliseMap();
   return map[key] ?? null;
 }
@@ -20,9 +21,17 @@ function normalise(raw: string, artefactTypes: string[]): string | null {
 export async function triageArtefacts(
   newTranscript: string,
   artefactTypes: string[],
+  conversationContext?: string,
 ): Promise<string[]> {
   const provider = getProviderForGenerator("triage");
   const systemPrompt = buildTriagePrompt(getTriageDescriptions());
+
+  const parts: string[] = [];
+  parts.push(`Available artefact types: ${JSON.stringify(artefactTypes)}`);
+  if (conversationContext) {
+    parts.push(`\nConversation so far:\n${conversationContext}`);
+  }
+  parts.push(`\nNew conversation (decide based on this):\n${newTranscript}`);
 
   let json = "";
   for await (const chunk of provider.stream({
@@ -30,7 +39,7 @@ export async function triageArtefacts(
     messages: [
       {
         role: "user",
-        content: `Available artefact types: ${JSON.stringify(artefactTypes)}\n\nNew conversation:\n${newTranscript}`,
+        content: parts.join("\n"),
       },
     ],
     maxTokens: 128,
@@ -48,7 +57,11 @@ export async function triageArtefacts(
 
     const normalised = parsed
       .map((t: string) => normalise(t, artefactTypes))
-      .filter((t): t is string => t !== null && (artefactTypes.includes(t) || t.startsWith(NEW_DIAGRAM_PREFIX) || t.startsWith(DELETE_DIAGRAM_PREFIX)));
+      .filter((t): t is string => {
+        if (t === null) return false;
+        if (t.startsWith(NEW_DIAGRAM_PREFIX) || t.startsWith(DELETE_DIAGRAM_PREFIX)) return true;
+        return artefactTypes.some((at) => at.toLowerCase() === t.toLowerCase());
+      });
 
     const unique = [...new Set(normalised)];
     log.info({ raw: cleaned, normalised: unique }, "triage result");

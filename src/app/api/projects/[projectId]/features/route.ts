@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { createMeeting, listMeetings } from "../../../../../../server/db/repositories/meetings";
 import { getProject } from "../../../../../../server/db/repositories/projects";
+import { createFeature, listFeatures } from "../../../../../../server/db/repositories/features";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = await params;
-  return NextResponse.json(await listMeetings(projectId));
+  const features = await listFeatures(projectId);
+  return NextResponse.json(features);
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ projectId: string }> }) {
@@ -14,11 +15,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ pro
     return NextResponse.json({ error: "Project not found" }, { status: 404 });
   }
 
-  let featureId: string | undefined;
-  try {
-    const body = await request.json();
-    featureId = body?.featureId;
-  } catch {}
+  const body = await request.json();
+  const name = body?.name;
+  if (typeof name !== "string" || !name.trim()) {
+    return NextResponse.json({ error: "Name is required" }, { status: 400 });
+  }
 
-  return NextResponse.json(await createMeeting(projectId, featureId));
+  const feature = await createFeature(projectId, name.trim());
+  return NextResponse.json(feature);
 }

@@ -1,8 +1,8 @@
 import WebSocket from "ws";
-import { logger } from "../logger";
+import { sttLogger } from "../logger";
 import type { STTProvider, STTStream, STTStreamOptions } from "./types";
 
-const log = logger.child({ module: "stt:deepgram" });
+const log = sttLogger.child({ module: "stt:deepgram" });
 
 export class DeepgramProvider implements STTProvider {
   private apiKey: string;
@@ -40,6 +40,7 @@ export class DeepgramProvider implements STTProvider {
       const transcript = response.channel?.alternatives?.[0]?.transcript;
 
       if (transcript) {
+        log.info({ text: transcript, isFinal: response.is_final }, "transcript");
         options.onTranscript({
           text: transcript,
           isFinal: response.is_final,

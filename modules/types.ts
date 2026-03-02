@@ -37,7 +37,7 @@ export interface DiagramModuleDefinition {
     plan: DiagramPlan,
     currentContent?: string,
   ): AsyncIterable<string>;
-  postProcess(content: string, renderer: DiagramRenderer): string;
+  postProcess(content: string, renderer: DiagramRenderer): string | null;
   getProvider(): LLMProvider;
 }
 

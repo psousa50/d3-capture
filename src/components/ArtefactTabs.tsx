@@ -8,12 +8,14 @@ import type { MeetingArtefacts } from "../lib/use-meeting";
 import { ConfirmModal } from "./ConfirmModal";
 import type { DocumentEntry } from "../lib/socket-client";
 
-type TopTab = "diagrams" | "spec" | "stories" | "transcripts";
+type TopTab = "context" | "diagrams" | "spec" | "stories" | "transcripts";
 
 function TabIcon({ tab }: { tab: TopTab }) {
   const props = { width: 14, height: 14, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "1.5", strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
 
   switch (tab) {
+    case "context":
+      return <svg {...props}><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" /></svg>;
     case "diagrams":
       return <svg {...props}><circle cx="12" cy="12" r="10" /><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" /><path d="M2 12h20" /></svg>;
     case "spec":
@@ -26,6 +28,7 @@ function TabIcon({ tab }: { tab: TopTab }) {
 }
 
 const TABS: { key: TopTab; label: string }[] = [
+  { key: "context", label: "Context" },
   { key: "diagrams", label: "Diagrams" },
   { key: "spec", label: "Spec" },
   { key: "stories", label: "Stories" },
@@ -35,13 +38,15 @@ const TABS: { key: TopTab; label: string }[] = [
 interface ArtefactTabsProps {
   artefacts: MeetingArtefacts;
   documents?: DocumentEntry[];
+  visibleTabs?: TopTab[];
   onDeleteDocument?: (id: string) => void;
   onRegenerateDiagrams?: () => void;
   onRegenerateDiagram?: (type: string, renderer: "mermaid" | "html") => void;
 }
 
-export function ArtefactTabs({ artefacts, documents, onDeleteDocument, onRegenerateDiagrams, onRegenerateDiagram }: ArtefactTabsProps) {
-  const [activeTab, setActiveTab] = useState<TopTab>("diagrams");
+export function ArtefactTabs({ artefacts, documents, visibleTabs, onDeleteDocument, onRegenerateDiagrams, onRegenerateDiagram }: ArtefactTabsProps) {
+  const tabs = visibleTabs ? TABS.filter((t) => visibleTabs.includes(t.key)) : TABS;
+  const [activeTab, setActiveTab] = useState<TopTab>(tabs[0]?.key ?? "diagrams");
   const [activeDiagram, setActiveDiagram] = useState<string | null>(null);
 
   const diagramKeys = Object.keys(artefacts.diagrams);
@@ -61,13 +66,13 @@ export function ArtefactTabs({ artefacts, documents, onDeleteDocument, onRegener
     <div className="flex h-full flex-col">
       <div className="flex items-center border-b border-zinc-800/50 px-4">
         <div className="flex gap-1">
-          {TABS.map((tab) => {
+          {tabs.map((tab) => {
             const isUpdating =
               tab.key === "diagrams"
                 ? diagramsHaveActivity
                 : tab.key === "transcripts"
                 ? false
-                : artefacts[tab.key].updating;
+                : artefacts[tab.key as "context" | "spec" | "stories"].updating;
 
             const isActive = activeTab === tab.key;
 
@@ -92,7 +97,13 @@ export function ArtefactTabs({ artefacts, documents, onDeleteDocument, onRegener
         </div>
       </div>
 
-      <div className={`min-h-0 flex-1 ${activeTab !== "diagrams" && activeTab !== "transcripts" && (activeTab === "spec" ? artefacts.spec.updating : artefacts.stories.updating) ? "animate-shimmer" : ""}`}>
+      <div className={`min-h-0 flex-1 ${activeTab !== "diagrams" && activeTab !== "transcripts" && artefacts[activeTab as "context" | "spec" | "stories"]?.updating ? "animate-shimmer" : ""}`}>
+        {activeTab === "context" && (
+          <MarkdownRenderer
+            content={artefacts.context.updating ? artefacts.context.pendingContent : artefacts.context.content}
+            placeholder="No project context yet"
+          />
+        )}
         {activeTab === "diagrams" && (
           <DiagramPanel
             diagrams={artefacts.diagrams}
@@ -160,7 +171,7 @@ function DocumentsPanel({
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-1 border-b border-zinc-800/30 bg-zinc-900/30 px-3 py-1.5">
-        {documents.map((doc, i) => (
+        {documents.map((doc) => (
           <button
             key={doc.id}
             onClick={() => setActiveDoc(doc.id)}

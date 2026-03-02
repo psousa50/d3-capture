@@ -1,5 +1,29 @@
 import { DiagramRenderer } from "../types";
 
+const VALID_MERMAID_PREFIXES = [
+  "graph ",
+  "flowchart ",
+  "sequenceDiagram",
+  "erDiagram",
+  "classDiagram",
+  "stateDiagram",
+  "stateDiagram-v2",
+  "C4Context",
+  "C4Container",
+  "C4Component",
+  "C4Dynamic",
+  "C4Deployment",
+  "gantt",
+  "pie",
+  "gitGraph",
+  "mindmap",
+  "timeline",
+  "quadrantChart",
+  "sankey",
+  "xychart",
+  "block-beta",
+];
+
 export function stripCodeFences(text: string): string {
   let cleaned = text.trim();
   cleaned = cleaned.replace(/^```(?:mermaid|html)?\s*\n?/i, "");
@@ -53,11 +77,25 @@ export function fixErDiagramAttributes(content: string): string {
   return result.join("\n");
 }
 
+function isValidDiagramOutput(content: string, renderer: DiagramRenderer): boolean {
+  const trimmed = content.trim();
+  if (!trimmed || trimmed.toUpperCase() === "SKIP") return false;
+
+  if (renderer === "html") {
+    return trimmed.startsWith("<") || trimmed.startsWith("<!DOCTYPE");
+  }
+
+  return VALID_MERMAID_PREFIXES.some((prefix) => trimmed.startsWith(prefix));
+}
+
 export function postProcessDiagram(
   content: string,
   renderer: DiagramRenderer,
-): string {
+): string | null {
   let processed = stripCodeFences(content);
+
+  if (!isValidDiagramOutput(processed, renderer)) return null;
+
   if (renderer === "mermaid") {
     processed = stripMermaidStyles(processed);
     processed = fixErDiagramAttributes(processed);

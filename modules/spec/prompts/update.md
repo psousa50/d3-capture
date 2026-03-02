@@ -2,6 +2,12 @@
 description: Update an existing feature specification with new information (meeting transcript, technical decisions, feedback, or discussion). Updates only affected sections while preserving existing content. No user interaction — runs to completion automatically.
 ---
 
+## Project Background
+
+{{PROJECT_CONTEXT}}
+
+---
+
 ## Existing Spec
 
 {{EXISTING_SPEC}}
@@ -29,6 +35,8 @@ description: Update an existing feature specification with new information (meet
 ## Instructions
 
 Read the Existing Spec and New Information sections above, then output the full updated specification. Run to completion without asking any questions.
+
+**The Project Background section is context only — use it to understand the project but do NOT reproduce it in the output.**
 
 **CRITICAL — Non-Greedy Updates:**
 

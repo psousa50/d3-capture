@@ -17,6 +17,7 @@ Rules:
 - Keep diagrams readable — no more than 15-20 nodes
 - Use clear, concise labels
 - Do NOT add style, classDef, or any custom styling — the renderer handles theming
+- If the conversation lacks sufficient detail to produce a meaningful diagram, output ONLY the word SKIP — nothing else. Do NOT ask clarifying questions or explain what is missing.
 
 Common Mermaid syntax patterns:
   graph TD / graph LR for flowcharts: A[Node] -->|label| B[Node]
@@ -50,7 +51,8 @@ Rules:
 - Only add, modify, or remove elements directly affected by the new conversation
 - Keep diagrams readable — no more than 15-20 nodes
 - Use clear, concise labels
-- Do NOT add style, classDef, or any custom styling — the renderer handles theming`;
+- Do NOT add style, classDef, or any custom styling — the renderer handles theming
+- If the conversation lacks sufficient detail to produce a meaningful diagram, output ONLY the word SKIP — nothing else. Do NOT ask clarifying questions or explain what is missing.`;
 
 export const HTML_CREATE_PROMPT = `Generate a UI wireframe as self-contained HTML and CSS. This is a lo-fi wireframe mockup, not a production UI.
 
@@ -61,7 +63,8 @@ Rules:
 - Include realistic placeholder content (not lorem ipsum)
 - Show the layout, navigation, forms, buttons, and key UI elements discussed
 - Keep it simple and readable — this is a wireframe, not a polished design
-- Output ONLY the HTML — no code fences, no markdown, no explanation`;
+- Output ONLY the HTML — no code fences, no markdown, no explanation
+- If the conversation lacks sufficient detail to produce a meaningful wireframe, output ONLY the word SKIP — nothing else. Do NOT ask clarifying questions or explain what is missing.`;
 
 export const HTML_UPDATE_PROMPT = `Update an existing UI wireframe based on new meeting conversation. You will receive the current HTML wireframe and new discussion.
 
@@ -70,4 +73,5 @@ Rules:
 - Preserve the existing layout and elements where they are still accurate
 - Only modify, add, or remove elements directly affected by the new conversation
 - Use system fonts only — no external resources, no JavaScript
-- Output ONLY the HTML — no code fences, no markdown, no explanation`;
+- Output ONLY the HTML — no code fences, no markdown, no explanation
+- If the conversation lacks sufficient detail to produce a meaningful wireframe, output ONLY the word SKIP — nothing else. Do NOT ask clarifying questions or explain what is missing.`;

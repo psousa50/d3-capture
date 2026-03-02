@@ -4,26 +4,25 @@ import { getProviderForGenerator } from "../../server/llm/config";
 
 const CREATE_PROMPT = loadPrompt(new URL("./prompts/create.md", import.meta.url));
 const UPDATE_PROMPT = loadPrompt(new URL("./prompts/update.md", import.meta.url));
-const SPEC_TEMPLATE = loadPrompt(new URL("./prompts/spec.md", import.meta.url));
+const CONTEXT_TEMPLATE = loadPrompt(new URL("./prompts/template.md", import.meta.url));
 
-export class SpecGenerator implements Generator {
-  type = "spec";
+export class ContextGenerator implements Generator {
+  type = "context";
 
-  async *generate({ context, currentContent, artefactStates }: GenerateOptions): AsyncIterable<string> {
-    const provider = getProviderForGenerator("spec");
+  async *generate({ context, currentContent }: GenerateOptions): AsyncIterable<string> {
+    const provider = getProviderForGenerator("context");
     const isUpdate = !!currentContent;
 
     const prompt = fillPlaceholders(isUpdate ? UPDATE_PROMPT : CREATE_PROMPT, {
       TRANSCRIPT: context,
-      TEMPLATE: SPEC_TEMPLATE,
-      EXISTING_SPEC: currentContent || "",
-      PROJECT_CONTEXT: artefactStates?.["context"] || "_No project context available_",
+      TEMPLATE: CONTEXT_TEMPLATE,
+      EXISTING_CONTEXT: currentContent || "",
     });
 
     yield* provider.stream({
       system: prompt,
       messages: [{ role: "user", content: "Generate." }],
-      maxTokens: 8192,
+      maxTokens: 4096,
     });
   }
 }

@@ -8,6 +8,7 @@ import { ContextManager } from "./context-manager";
 import { triageArtefacts } from "./triage";
 import { AccumulatedTranscript } from "./transcript-accumulator";
 import { logger } from "./logger";
+import { consolidateProjectDiagram } from "./diagram-consolidator";
 import { generateGuidanceItems } from "../modules/guidance/generator";
 import { getGuidanceItems, insertGuidanceItems, resolveGuidanceItem } from "./db/repositories/guidance";
 import { mentionsNova, runAssistant } from "../modules/assistant/generator";
@@ -29,6 +30,9 @@ export class GenerationOrchestrator {
   private io: Server;
   private room: string;
   private meetingId: string;
+  private static consolidationTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private static CONSOLIDATION_DEBOUNCE_MS = 5_000;
+
   private generating = false;
   private pendingTranscript: AccumulatedTranscript | null = null;
   private guidanceRunning = false;
@@ -41,9 +45,18 @@ export class GenerationOrchestrator {
     this.contextManager = contextManager;
   }
 
+  private isFeatureScoped(): boolean {
+    return this.contextManager.getFeatureId() !== null;
+  }
+
   private getTriageTypes(): string[] {
+    const isFeature = this.isFeatureScoped();
     const textTypes = getTextModules()
-      .filter((m) => m.type !== "stories")
+      .filter((m) => {
+        if (m.type === "stories") return false;
+        if (isFeature) return m.type === "spec";
+        return m.type === "context";
+      })
       .map((m) => m.type);
     const diagramKeys = Object.keys(this.contextManager.getArtefactStates())
       .filter((k) => k.startsWith("diagram:"));
@@ -59,11 +72,13 @@ export class GenerationOrchestrator {
     this.pendingTranscript = null;
 
     try {
-      const affected = await triageArtefacts(transcript.fullText, this.getTriageTypes());
+      const conversationContext = this.contextManager.buildPromptContext("triage");
+      const affected = await triageArtefacts(transcript.fullText, this.getTriageTypes(), conversationContext);
       log.info({ affected }, "triage result");
 
       if (affected.length === 0) return;
 
+      let contextAffected = false;
       let specAffected = false;
       const diagramUpdates: string[] = [];
       const newDiagrams: string[] = [];
@@ -76,13 +91,15 @@ export class GenerationOrchestrator {
           newDiagrams.push(type.slice("diagram:new:".length));
         } else if (type.startsWith("diagram:")) {
           diagramUpdates.push(type.slice("diagram:".length));
+        } else if (type === "context") {
+          contextAffected = true;
         } else if (type === "spec") {
           specAffected = true;
         }
       }
 
-      if (specAffected) {
-        await this.runSpecThenStories();
+      if (contextAffected || specAffected) {
+        await this.runTextArtefacts(contextAffected, specAffected);
       }
 
       for (const type of diagramDeletions) {
@@ -98,6 +115,23 @@ export class GenerationOrchestrator {
         log.info({ diagrams: diagramUpdates }, "updating existing diagrams");
         await withTimeout(this.runDiagramGeneration(diagramUpdates), GENERATION_TIMEOUT_MS, "diagrams")
           .catch((err) => log.error({ err }, "diagram update failed"));
+      }
+
+      if (newDiagrams.length === 0 && (contextAffected || specAffected)) {
+        const existingDiagrams = Object.keys(this.contextManager.getArtefactStates())
+          .filter((k) => k.startsWith("diagram:"));
+        if (existingDiagrams.length === 0) {
+          log.info("no diagrams exist, auto-planning initial diagrams");
+          const diagramMod = getDiagramModule();
+          if (diagramMod) {
+            const planContext = this.contextManager.buildPromptContext("diagram");
+            const plans = await diagramMod.planDiagrams(diagramMod.getProvider(), planContext);
+            for (const plan of plans) {
+              newDiagrams.push(plan.type);
+            }
+            log.info({ planned: newDiagrams }, "auto-planned diagrams");
+          }
+        }
       }
 
       for (const type of newDiagrams) {
@@ -270,8 +304,9 @@ export class GenerationOrchestrator {
     this.pendingTranscript = null;
 
     try {
-      log.info("generating text artefacts (transcript import)");
-      await this.runSpecThenStories();
+      const isFeature = this.isFeatureScoped();
+      log.info({ scope: isFeature ? "feature" : "project" }, "generating text artefacts (transcript import)");
+      await this.runTextArtefacts(!isFeature, isFeature);
       log.info("generation complete");
     } finally {
       this.generating = false;
@@ -283,17 +318,24 @@ export class GenerationOrchestrator {
     }
   }
 
-  private async runSpecThenStories() {
-    const specModule = getTextModules().find((m) => m.type === "spec");
-    const storiesModule = getTextModules().find((m) => m.type === "stories");
+  private async runTextArtefacts(includeContext: boolean, includeSpec: boolean) {
+    const textModules = getTextModules();
+    const contextMod = textModules.find((m) => m.type === "context");
+    const specMod = textModules.find((m) => m.type === "spec");
+    const storiesMod = textModules.find((m) => m.type === "stories");
 
-    if (specModule) {
-      await withTimeout(this.runGenerator(specModule.generator), GENERATION_TIMEOUT_MS, "spec");
+    if (includeContext && contextMod) {
+      await withTimeout(this.runGenerator(contextMod.generator), GENERATION_TIMEOUT_MS, "context");
+      log.info("context complete");
+    }
+
+    if (includeSpec && specMod) {
+      await withTimeout(this.runGenerator(specMod.generator), GENERATION_TIMEOUT_MS, "spec");
       log.info("spec complete");
     }
 
-    if (storiesModule) {
-      await withTimeout(this.runGenerator(storiesModule.generator), GENERATION_TIMEOUT_MS, "stories");
+    if (includeSpec && storiesMod) {
+      await withTimeout(this.runGenerator(storiesMod.generator), GENERATION_TIMEOUT_MS, "stories");
       log.info("stories complete");
     }
   }
@@ -408,9 +450,16 @@ export class GenerationOrchestrator {
 
       const processed = diagramMod.postProcess(fullContent, entry.renderer);
 
+      if (processed === null) {
+        log.info({ artefactType }, "diagram skipped — insufficient context");
+        this.emit("artefact-complete", { artefactType, content: "" });
+        return;
+      }
+
       await this.contextManager.updateArtefact(artefactType, processed);
 
       this.emit("artefact-complete", { artefactType, content: processed });
+      this.scheduleConsolidation(entry.type);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Generation failed";
       log.error({ err, artefactType }, "diagram generator error");
@@ -419,6 +468,25 @@ export class GenerationOrchestrator {
         error: message,
       });
     }
+  }
+
+  private scheduleConsolidation(diagramType: string) {
+    if (!this.isFeatureScoped()) return;
+
+    const projectId = this.contextManager.getProjectId();
+    const key = `${projectId}:${diagramType}`;
+
+    const existing = GenerationOrchestrator.consolidationTimers.get(key);
+    if (existing) clearTimeout(existing);
+
+    const timer = setTimeout(() => {
+      GenerationOrchestrator.consolidationTimers.delete(key);
+      consolidateProjectDiagram(projectId, diagramType).catch((err) =>
+        log.warn({ err, projectId, diagramType }, "diagram consolidation failed"),
+      );
+    }, GenerationOrchestrator.CONSOLIDATION_DEBOUNCE_MS);
+
+    GenerationOrchestrator.consolidationTimers.set(key, timer);
   }
 
   private emit(event: string, data: Record<string, unknown>) {

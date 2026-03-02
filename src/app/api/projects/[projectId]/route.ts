@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getProject, deleteProject } from "../../../../../server/db/repositories/projects";
-import { getArtefacts } from "../../../../../server/db/repositories/artefacts";
+import { getProjectArtefacts } from "../../../../../server/db/repositories/artefacts";
 import { getDocumentsByProject } from "../../../../../server/db/repositories/documents";
+import { listFeatures } from "../../../../../server/db/repositories/features";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = await params;
@@ -10,9 +11,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ pro
     return NextResponse.json({ error: "Project not found" }, { status: 404 });
   }
 
-  const [artefacts, documents] = await Promise.all([
-    getArtefacts(projectId),
+  const [artefacts, documents, features] = await Promise.all([
+    getProjectArtefacts(projectId),
     getDocumentsByProject(projectId),
+    listFeatures(projectId),
   ]);
   const artefactMap: Record<string, string> = {};
   for (const row of artefacts) {
@@ -23,6 +25,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ pro
     ...project,
     artefacts: artefactMap,
     documents: documents.map((d) => ({ id: d.id, content: d.content, createdAt: d.created_at, name: d.name, docNumber: d.doc_number })),
+    features,
   });
 }
 

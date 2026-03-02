@@ -9,11 +9,12 @@ Real-time meeting assistant that transcribes audio, generates specs/stories/diag
 ```
 server/
 ├── index.ts                     Custom HTTP server: Next.js SSR + Socket.IO on same port
-├── meeting-manager.ts           Active meeting lifecycle, participant join/leave, presence, graceful shutdown (30s grace)
+├── meeting-manager.ts           Active meeting lifecycle, participant join/leave, presence, scope-aware snapshots, graceful shutdown (30s grace)
 ├── audio-handler.ts             Per-participant STT streams via provider, delegates to TranscriptAccumulator
 ├── transcript-accumulator.ts    Buffers transcript chunks, silence detection (4s), rate-limiting (15s min), DB writes
-├── context-manager.ts           Two-tier context window (recent 5min verbatim + older summarised), builds LLM prompts, persists artefacts
-├── generation-orchestrator.ts   Triage → parallel text generation (spec+stories) → auto-update existing diagrams, on-demand diagram creation, single-at-a-time queue
+├── context-manager.ts           Two-tier context window (recent 5min verbatim + older summarised), scope-aware artefact loading, builds LLM prompts
+├── generation-orchestrator.ts   Scope-aware triage → sequential text generation → auto-update diagrams, single-at-a-time queue
+├── diagram-consolidator.ts     Merges feature-level diagrams into project-level via LLM, debounced fire-and-forget
 ├── triage.ts                    LLM classifier deciding which artefacts are affected by new transcript, normalises output
 ├── web-search.ts                Tavily web search wrapper with timeout (3s), used by assistant module
 ├── stt/
@@ -32,18 +33,22 @@ server/
 ├── db/
 │   ├── connection.ts            PostgreSQL pool singleton, BIGINT type parser
 │   ├── schema.ts                Table creation and migrations (async)
-│   └── repositories/            CRUD per entity: projects, meetings, transcripts, artefacts, documents, guidance
+│   └── repositories/            CRUD per entity: projects, features, meetings, transcripts, artefacts, documents, guidance
 └── ws.d.ts
 
 modules/
 ├── types.ts                     Generator, ArtefactModuleDefinition, DiagramModuleDefinition interfaces
 ├── registry.ts                  Central module registry: getTextModules(), getDiagramModule(), triage helpers
+├── context/
+│   ├── prompts/                 Context create/update prompt templates (project vision, goals, scope, domain)
+│   ├── generator.ts             ContextGenerator class
+│   └── index.ts                 Module definition (type, description, aliases, generator)
 ├── spec/
-│   ├── prompts.ts               Spec create/update prompt templates (pure strings, zero imports)
+│   ├── prompts/                 Spec create/update prompt templates (includes project context as background)
 │   ├── generator.ts             SpecGenerator class
 │   └── index.ts                 Module definition (type, description, aliases, generator)
 ├── stories/
-│   ├── prompts.ts               Stories create/update prompt templates
+│   ├── prompts/                 Stories create/update prompt templates
 │   ├── generator.ts             StoryGenerator class
 │   └── index.ts                 Module definition
 ├── diagram/
@@ -66,14 +71,16 @@ src/
 │   ├── page.tsx                 Dashboard: project list, create/delete
 │   ├── login/page.tsx           Google OAuth sign-in page
 │   ├── projects/[projectId]/
-│   │   ├── page.tsx             Project detail: meeting list, aggregated artefacts
+│   │   ├── page.tsx             Project detail: project artefacts (context + diagrams), features list, meetings
+│   │   ├── features/[featureId]/
+│   │   │   └── page.tsx         Feature detail: feature artefacts (spec + stories + diagrams), feature meetings
 │   │   └── meetings/[meetingId]/
-│   │       └── page.tsx         Live meeting: recording, transcript, streaming artefacts
+│   │       └── page.tsx         Live meeting: recording, transcript, scope-aware streaming artefacts
 │   └── api/
 │       ├── auth/[...nextauth]/  NextAuth.js Google OAuth handlers (catch-all route)
-│       └── projects/            REST routes for project/meeting CRUD
+│       └── projects/            REST routes for project/feature/meeting CRUD
 ├── components/
-│   ├── ArtefactTabs.tsx         Tab interface switching between diagrams, spec, stories, documents
+│   ├── ArtefactTabs.tsx         Tab interface with configurable visibleTabs prop, switches between context, diagrams, spec, stories, documents
 │   ├── DiagramRenderer.tsx      Mermaid rendering with dark theme
 │   ├── WireframeRenderer.tsx    HTML iframe sandbox for wireframes
 │   ├── MarkdownRenderer.tsx     react-markdown with prose styling
@@ -84,16 +91,30 @@ src/
 │   ├── TranscriptImportModal.tsx  Paste external transcripts
 │   └── ConfirmModal.tsx         Generic confirmation dialog
 ├── lib/
-│   ├── use-meeting.ts           Main hook: Socket connection, audio capture, all meeting state
+│   ├── use-meeting.ts           Main hook: Socket connection, audio capture, all meeting state, exposes scope
 │   ├── socket-client.ts         MeetingSocket class: Socket.IO wrapper with reconnection (10 attempts)
 │   └── audio-capture.ts         Web Audio API: mic → PCM16 → chunks via ScriptProcessorNode
 └── middleware.ts                NextAuth `withAuth` guard: protects all routes, redirects to /login
 ```
 
+## Two-level artefact model
+
+Artefacts are scoped to either the **project** or a **feature**:
+
+- **Project-level**: `context` (project vision/goals/scope) + `diagram:*` (architecture, ER, domain model)
+- **Feature-level**: `spec` + `stories` + `diagram:*` (feature-specific diagrams like sequence, wireframe)
+
+Each feature is an explicit entity under a project. Meetings are optionally linked to a feature via `feature_id`. The meeting's scope determines which artefact types are available for generation:
+
+- **Project meeting** (no feature): triage considers `context` + project diagram types
+- **Feature meeting**: triage considers `spec` + feature diagram types; stories always follow spec
+
+Project context is automatically included as background in spec generation prompts for feature meetings.
+
 ## Data flow
 
 ```
-Producer connects → MeetingManager.joinAsProducer() → creates AudioHandler
+Producer connects → MeetingManager.joinAsProducer(featureId) → creates AudioHandler(featureId)
     ↓
 Audio frames → per-participant STT stream (via STTProvider) → transcript chunks
     ↓
@@ -102,28 +123,32 @@ TranscriptAccumulator (silence 4s + rate limit 15s) → callback
 ContextManager.addTranscript() + GenerationOrchestrator.trigger() + triggerGuidance() + triggerAssistant()
     ↓                                                                    ↓                     ↓
 triageArtefacts() → decides affected types                   Guidance: LLM outputs JSON   Nova: if "Nova" mentioned
-    (spec, stories, existing diagram subtypes)               → parse → persist → broadcast  → Anthropic tool-use agent
-                                                                                            → optional web search
+    (scope-filtered: project=context+diagrams,               → parse → persist → broadcast  → Anthropic tool-use agent
+     feature=spec+diagrams)                                                                 → optional web search
                                                                                             → answer as transcript entry
     ↓
-Text generators run in parallel (spec + stories) → stream chunks to room
+Text generators run sequentially (project: context | feature: spec → stories) → stream chunks to room
     ↓
 Existing diagrams auto-update if triage selects their subtype (e.g. diagram:er)
     ↓
 New diagrams are user-initiated via add-diagram socket event → on-demand generation
     ↓
-All artefacts persisted via upsertArtefact() + broadcast to room
+All artefacts persisted via upsertArtefact(featureId) + broadcast to room
 ```
 
 ## Database schema (PostgreSQL)
 
 ```
 projects (id, name, created_at)
-    └── meetings (id, project_id, started_at, ended_at, status, pending_transcript)
+    └── features (id, project_id, name, created_at)
+    └── meetings (id, project_id, feature_id?, started_at, ended_at, status, pending_transcript)
             ├── transcript_chunks (id auto, meeting_id, text, speaker, timestamp)
             ├── documents (id, meeting_id, content, created_at, name, doc_number)
             └── guidance_items (id, meeting_id, type, content, resolved, created_at) ON DELETE CASCADE
-    └── artefacts (id, project_id, type, content, updated_at) UNIQUE(project_id, type)
+    └── artefacts (id, project_id, feature_id, type, content, updated_at)
+            — feature_id='__project__' for project-level artefacts
+            — feature_id=<uuid> for feature-level artefacts
+            — UNIQUE(project_id, feature_id, type)
 ```
 
 ## API surface
@@ -131,8 +156,10 @@ projects (id, name, created_at)
 **REST** (Next.js API routes):
 - `GET/POST /api/auth/[...nextauth]` — NextAuth.js Google OAuth handlers
 - `GET/POST /api/projects` — list/create projects
-- `GET/DELETE /api/projects/[projectId]` — get (with artefacts)/delete project
-- `GET/POST /api/projects/[projectId]/meetings` — list/create meetings
+- `GET/DELETE /api/projects/[projectId]` — get (with project artefacts + features)/delete project
+- `GET/POST /api/projects/[projectId]/features` — list/create features
+- `GET/DELETE /api/projects/[projectId]/features/[featureId]` — get (with feature artefacts)/delete feature
+- `GET/POST /api/projects/[projectId]/meetings` — list/create meetings (POST accepts optional featureId)
 - `DELETE /api/projects/[projectId]/meetings/[meetingId]` — delete meeting
 
 **Socket.IO** (client → server):
@@ -145,7 +172,7 @@ projects (id, name, created_at)
 - `resolve-guidance`, `unresolve-guidance` — toggle guidance item resolution
 
 **Socket.IO** (server → client):
-- `meeting-state` — full snapshot on connect
+- `meeting-state` — full snapshot on connect (includes `scope: "project" | "feature"`)
 - `live-transcript` — real-time transcript chunks
 - `artefact-start/chunk/complete/error` — streaming generation
 - `presence` — participant list updates
@@ -170,8 +197,11 @@ Google OAuth via NextAuth.js v4. `NEXTAUTH_SECRET` + `GOOGLE_CLIENT_ID` + `GOOGL
 - **Streaming-first** — artefacts stream via `artefact-chunk` events, UI shows live generation
 - **Single-at-a-time generation queue** — prevents overlapping LLM calls
 - **Per-participant audio streams** — each producer gets own STT stream via pluggable provider (`STT_PROVIDER` env var, default: deepgram)
+- **Two-level artefact scoping** — project-level artefacts (context, diagrams) vs feature-level artefacts (spec, stories, diagrams); scope determined by meeting's feature association
+- **Project context as background** — the `context` artefact provides project-level background (vision, goals, scope, domain) that is automatically included in spec generation prompts for feature meetings
 - **Module system** — each artefact type is a self-contained module in `modules/` with prompts, generator, and definition; registry-driven discovery
 - **Repository pattern** — one module per DB entity in `server/db/repositories/`
 - **Room-based broadcasting** — Socket.IO rooms per meeting (`meeting:{id}`)
 - **Guidance runs independently** — not gated by the artefact generation lock; lightweight JSON output parsed server-side, meeting-scoped
 - **Nova (AI assistant) runs independently** — triggered by name mention ("Nova"), uses Anthropic tool-use agent loop with web search; responses stored as transcript chunks (speaker="Nova")
+- **Diagram consolidation** — when a feature-level diagram is saved, the orchestrator schedules (debounced, 5s) a background consolidation that loads all feature diagrams of that type, merges them with the current project-level diagram via LLM, and saves the result at project scope; fire-and-forget, failures logged but do not affect feature meetings

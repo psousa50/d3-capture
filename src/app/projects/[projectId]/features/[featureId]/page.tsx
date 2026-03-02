@@ -3,10 +3,9 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArtefactTabs } from "../../../components/ArtefactTabs";
-import { ConfirmModal } from "../../../components/ConfirmModal";
-import type { MeetingArtefacts, ArtefactState, DiagramState } from "../../../lib/use-meeting";
-import type { DocumentEntry } from "../../../lib/socket-client";
+import { ArtefactTabs } from "../../../../../components/ArtefactTabs";
+import { ConfirmModal } from "../../../../../components/ConfirmModal";
+import type { MeetingArtefacts, ArtefactState, DiagramState } from "../../../../../lib/use-meeting";
 
 interface Meeting {
   id: string;
@@ -16,18 +15,16 @@ interface Meeting {
   status: string;
 }
 
-interface Feature {
+interface FeatureData {
   id: string;
+  project_id: string;
   name: string;
-  created_at: number;
+  artefacts: Record<string, string>;
 }
 
 interface ProjectData {
   id: string;
   name: string;
-  artefacts: Record<string, string>;
-  documents: DocumentEntry[];
-  features: Feature[];
 }
 
 function toReadOnlyArtefacts(raw: Record<string, string>): MeetingArtefacts {
@@ -82,38 +79,32 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-export default function ProjectPage() {
-  const { projectId } = useParams<{ projectId: string }>();
+export default function FeaturePage() {
+  const { projectId, featureId } = useParams<{ projectId: string; featureId: string }>();
   const router = useRouter();
+  const [feature, setFeature] = useState<FeatureData | null>(null);
   const [project, setProject] = useState<ProjectData | null>(null);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
-  const [newFeatureName, setNewFeatureName] = useState("");
-  const [creatingFeature, setCreatingFeature] = useState(false);
-  const [deleteFeatureTarget, setDeleteFeatureTarget] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
+      fetch(`/api/projects/${projectId}/features/${featureId}`).then((r) => r.json()),
       fetch(`/api/projects/${projectId}`).then((r) => r.json()),
       fetch(`/api/projects/${projectId}/meetings`).then((r) => r.json()),
     ])
-      .then(([proj, mtgs]) => {
+      .then(([feat, proj, mtgs]) => {
+        setFeature(feat);
         setProject(proj);
-        setMeetings(mtgs);
+        setMeetings(mtgs.filter((m: Meeting) => m.feature_id === featureId));
       })
       .finally(() => setLoading(false));
-  }, [projectId]);
+  }, [projectId, featureId]);
 
   const handleStartMeeting = async () => {
     setStarting(true);
-    const res = await fetch(`/api/projects/${projectId}/meetings`, { method: "POST" });
-    const meeting = await res.json();
-    router.push(`/projects/${projectId}/meetings/${meeting.id}`);
-  };
-
-  const handleStartFeatureMeeting = async (featureId: string) => {
     const res = await fetch(`/api/projects/${projectId}/meetings`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -121,29 +112,6 @@ export default function ProjectPage() {
     });
     const meeting = await res.json();
     router.push(`/projects/${projectId}/meetings/${meeting.id}`);
-  };
-
-  const handleCreateFeature = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newFeatureName.trim()) return;
-    setCreatingFeature(true);
-    const res = await fetch(`/api/projects/${projectId}/features`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newFeatureName.trim() }),
-    });
-    const feature = await res.json();
-    setProject((prev) => prev ? { ...prev, features: [...prev.features, feature] } : prev);
-    setNewFeatureName("");
-    setCreatingFeature(false);
-  };
-
-  const handleDeleteFeature = async () => {
-    if (!deleteFeatureTarget) return;
-    await fetch(`/api/projects/${projectId}/features/${deleteFeatureTarget}`, { method: "DELETE" });
-    setProject((prev) => prev ? { ...prev, features: prev.features.filter((f) => f.id !== deleteFeatureTarget) } : prev);
-    setMeetings((prev) => prev.filter((m) => m.feature_id !== deleteFeatureTarget));
-    setDeleteFeatureTarget(null);
   };
 
   const handleDeleteMeeting = async () => {
@@ -172,17 +140,16 @@ export default function ProjectPage() {
     );
   }
 
-  if (!project) {
+  if (!feature || !project) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <p className="text-sm text-red-400">Project not found</p>
+        <p className="text-sm text-red-400">Feature not found</p>
       </div>
     );
   }
 
-  const artefacts = toReadOnlyArtefacts(project.artefacts);
-  const hasArtefacts = Object.keys(project.artefacts).length > 0;
-  const projectMeetings = meetings.filter((m) => !m.feature_id);
+  const artefacts = toReadOnlyArtefacts(feature.artefacts);
+  const hasArtefacts = Object.keys(feature.artefacts).length > 0;
 
   return (
     <div className="min-h-screen">
@@ -195,7 +162,13 @@ export default function ProjectPage() {
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-700">
               <polyline points="9 18 15 12 9 6" />
             </svg>
-            <span className="font-medium text-zinc-200">{project.name}</span>
+            <Link href={`/projects/${projectId}`} className="text-zinc-500 transition-colors hover:text-zinc-300">
+              {project.name}
+            </Link>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-700">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+            <span className="font-medium text-zinc-200">{feature.name}</span>
           </div>
           <button
             onClick={handleStartMeeting}
@@ -217,90 +190,23 @@ export default function ProjectPage() {
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" />
               </svg>
-              Project Artefacts
+              Feature Artefacts
             </h2>
             <div className="h-[500px] overflow-hidden rounded-xl border border-zinc-800/50 bg-zinc-950">
-              <ArtefactTabs artefacts={artefacts} documents={project.documents} visibleTabs={["context", "diagrams", "transcripts"]} />
+              <ArtefactTabs artefacts={artefacts} visibleTabs={["spec", "stories", "diagrams"]} />
             </div>
           </div>
         )}
-
-        <div className="mb-10">
-          <h2 className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
-            </svg>
-            Features
-          </h2>
-
-          <form onSubmit={handleCreateFeature} className="mb-4 flex gap-2">
-            <input
-              type="text"
-              value={newFeatureName}
-              onChange={(e) => setNewFeatureName(e.target.value)}
-              placeholder="Feature name..."
-              className="flex-1 rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 outline-none transition-colors focus:border-zinc-700"
-            />
-            <button
-              type="submit"
-              disabled={!newFeatureName.trim() || creatingFeature}
-              className="rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 transition-all hover:bg-zinc-700 disabled:opacity-40"
-            >
-              Add Feature
-            </button>
-          </form>
-
-          {project.features.length === 0 && (
-            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-zinc-800 py-12">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mb-2 text-zinc-700">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
-              </svg>
-              <p className="text-xs text-zinc-600">No features yet. Create one to start building specs and stories.</p>
-            </div>
-          )}
-
-          <div className="space-y-2">
-            {project.features.map((feature) => (
-              <div
-                key={feature.id}
-                className="group flex items-center justify-between rounded-xl border border-zinc-800/50 bg-zinc-900/20 px-5 py-4 transition-all hover:border-zinc-700/50 hover:bg-zinc-900/40"
-              >
-                <Link
-                  href={`/projects/${projectId}/features/${feature.id}`}
-                  className="flex flex-1 items-center"
-                >
-                  <p className="text-sm font-medium text-zinc-200">{feature.name}</p>
-                </Link>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleStartFeatureMeeting(feature.id)}
-                    className="rounded-md px-3 py-1.5 text-xs font-medium text-indigo-400 transition-colors hover:bg-indigo-500/10"
-                  >
-                    New Meeting
-                  </button>
-                  <button
-                    onClick={() => setDeleteFeatureTarget(feature.id)}
-                    className="rounded-md p-1.5 text-zinc-700 opacity-0 transition-all hover:bg-zinc-800 hover:text-red-400 group-hover:opacity-100"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
 
         <div>
           <h2 className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
             </svg>
-            Project Meetings
+            Feature Meetings
           </h2>
 
-          {projectMeetings.length === 0 && (
+          {meetings.length === 0 && (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-zinc-800 py-12">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mb-2 text-zinc-700">
                 <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
@@ -308,12 +214,12 @@ export default function ProjectPage() {
                 <line x1="12" y1="19" x2="12" y2="23" />
                 <line x1="8" y1="23" x2="16" y2="23" />
               </svg>
-              <p className="text-xs text-zinc-600">No project meetings yet. Start one to define the project context.</p>
+              <p className="text-xs text-zinc-600">No meetings yet. Start one to build the spec and stories.</p>
             </div>
           )}
 
           <div className="space-y-2">
-            {projectMeetings.map((meeting) => (
+            {meetings.map((meeting) => (
               <div
                 key={meeting.id}
                 className="group flex items-center justify-between rounded-xl border border-zinc-800/50 bg-zinc-900/20 px-5 py-4 transition-all hover:border-zinc-700/50 hover:bg-zinc-900/40"
@@ -362,14 +268,6 @@ export default function ProjectPage() {
         message="This will permanently delete the meeting and its transcripts."
         onConfirm={handleDeleteMeeting}
         onCancel={() => setDeleteTarget(null)}
-      />
-
-      <ConfirmModal
-        open={deleteFeatureTarget !== null}
-        title="Delete feature"
-        message="This will permanently delete the feature, its artefacts, and all associated meetings."
-        onConfirm={handleDeleteFeature}
-        onCancel={() => setDeleteFeatureTarget(null)}
       />
     </div>
   );

@@ -26,11 +26,11 @@ export class AudioHandler {
   private nextSpeakerIndex = 0;
   private sttProvider: STTProvider | null = null;
 
-  constructor(io: Server, room: string, projectId: string, meetingId: string) {
+  constructor(io: Server, room: string, projectId: string, meetingId: string, featureId: string | null) {
     this.io = io;
     this.room = room;
     this.meetingId = meetingId;
-    this.contextManager = new ContextManager(projectId, meetingId);
+    this.contextManager = new ContextManager(projectId, meetingId, featureId);
     this.orchestrator = new GenerationOrchestrator(this.io, this.room, meetingId, this.contextManager);
 
     this.accumulator = new TranscriptAccumulator(meetingId, (transcript) => {
@@ -70,6 +70,7 @@ export class AudioHandler {
           text: result.text,
           isFinal: result.isFinal,
           speaker: speakerName,
+          timestamp: Date.now(),
         });
       },
       onError: (err) => {
@@ -110,7 +111,7 @@ export class AudioHandler {
     const speaker = userName || "You";
     const row = await insertChunk(this.meetingId, text, speaker, now);
 
-    this.emit("live-transcript", { id: row.id, text, isFinal: true, speaker });
+    this.emit("live-transcript", { id: row.id, text, isFinal: true, speaker, timestamp: now });
 
     const transcript = {
       chunks: [{ text, isFinal: true as const, timestamp: now }],
