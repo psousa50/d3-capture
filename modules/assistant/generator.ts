@@ -1,11 +1,18 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { loadPrompt } from "../prompts";
+import { getTemplateStore } from "../../server/plugins/registry";
 import { searchWeb } from "../../server/web-search";
 import { logger } from "../../server/logger";
 
 const log = logger.child({ module: "assistant" });
 
-const SYSTEM_PROMPT = loadPrompt(new URL("./prompts/system.md", import.meta.url));
+let systemPrompt: string | null = null;
+
+async function loadSystemPrompt() {
+  if (systemPrompt) return systemPrompt;
+  systemPrompt = await getTemplateStore().getTemplate("assistant/system");
+  return systemPrompt;
+}
+
 const MAX_TOOL_ROUNDS = 5;
 const MODEL = process.env.ASSISTANT_MODEL ?? "claude-haiku-4-5-20251001";
 
@@ -106,6 +113,7 @@ export async function runAssistant(
   context: string,
   artefactStates: Record<string, string>,
 ): Promise<string | null> {
+  const prompt = await loadSystemPrompt();
   const client = new Anthropic();
   const messages: Anthropic.MessageParam[] = [
     { role: "user", content: context },
@@ -115,7 +123,7 @@ export async function runAssistant(
     const response = await client.messages.create({
       model: MODEL,
       max_tokens: 1024,
-      system: SYSTEM_PROMPT,
+      system: prompt,
       tools,
       messages,
     });

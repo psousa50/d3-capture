@@ -1,16 +1,7 @@
 import { AccumulatedTranscript } from "./transcript-accumulator";
 import { getProviderForGenerator } from "./llm/config";
-import {
-  upsertArtefact,
-  deleteDiagramArtefacts,
-  deleteArtefact,
-  deleteArtefactById,
-  getProjectArtefacts,
-  getFeatureArtefacts,
-  getArtefact,
-} from "./db/repositories/artefacts";
-import { getChunks } from "./db/repositories/transcripts";
-import { getDocuments } from "./db/repositories/documents";
+import type { ArtefactStore } from "./plugins/types/artefact-store";
+import type { MeetingStore } from "./plugins/types/meeting-store";
 import type { ArtefactInfo } from "./routing";
 import { logger } from "./logger";
 
@@ -35,21 +26,23 @@ interface ContextWindow {
 export class ContextManager {
   private projectId: string;
   private featureId: string | null;
+  private artefactStore: ArtefactStore;
   private transcripts: AccumulatedTranscript[] = [];
   private summary = "";
   private artefactEntries = new Map<string, ArtefactEntry>();
   private lastSummarisedAt: number = Date.now();
   private summarising = false;
 
-  constructor(projectId: string, meetingId: string, featureId: string | null) {
+  constructor(projectId: string, meetingId: string, featureId: string | null, artefactStore: ArtefactStore, meetingStore: MeetingStore) {
     this.projectId = projectId;
     this.featureId = featureId;
-    this.hydrate(meetingId).catch((err) => log.error({ err }, "hydration failed"));
+    this.artefactStore = artefactStore;
+    this.hydrate(meetingId, meetingStore).catch((err) => log.error({ err }, "hydration failed"));
   }
 
-  private async hydrate(meetingId: string) {
+  private async hydrate(meetingId: string, meetingStore: MeetingStore) {
     if (this.featureId) {
-      const featureRows = await getFeatureArtefacts(this.projectId, this.featureId);
+      const featureRows = await this.artefactStore.getFeatureArtefacts(this.projectId, this.featureId);
       for (const row of featureRows) {
         this.artefactEntries.set(row.type, {
           id: row.id,
@@ -59,7 +52,7 @@ export class ContextManager {
           scope: "feature",
         });
       }
-      const contextRow = await getArtefact(this.projectId, "context");
+      const contextRow = await this.artefactStore.getArtefact(this.projectId, "context");
       if (contextRow) {
         this.artefactEntries.set("context", {
           id: contextRow.id,
@@ -69,7 +62,7 @@ export class ContextManager {
           scope: "project",
         });
       }
-      const projectRows = await getProjectArtefacts(this.projectId);
+      const projectRows = await this.artefactStore.getProjectArtefacts(this.projectId);
       for (const row of projectRows) {
         if (row.type.startsWith("diagram:") && !this.artefactEntries.has(row.type)) {
           this.artefactEntries.set(`project:${row.type}`, {
@@ -82,7 +75,7 @@ export class ContextManager {
         }
       }
     } else {
-      const rows = await getProjectArtefacts(this.projectId);
+      const rows = await this.artefactStore.getProjectArtefacts(this.projectId);
       for (const row of rows) {
         this.artefactEntries.set(row.type, {
           id: row.id,
@@ -94,8 +87,8 @@ export class ContextManager {
       }
     }
 
-    const chunks = await getChunks(meetingId);
-    const docs = await getDocuments(meetingId);
+    const chunks = await meetingStore.getChunks(meetingId);
+    const docs = await meetingStore.getDocuments(meetingId);
 
     for (const chunk of chunks) {
       this.transcripts.push({
@@ -156,7 +149,7 @@ export class ContextManager {
     const entry = this.artefactEntries.get(type);
     const artefactName = name ?? entry?.name ?? "";
 
-    const id = await upsertArtefact(this.projectId, type, content, featureId, artefactName);
+    const id = await this.artefactStore.upsertArtefact(this.projectId, type, content, featureId, artefactName);
 
     this.artefactEntries.set(type, {
       id,
@@ -171,7 +164,7 @@ export class ContextManager {
     const entry = this.findEntryByType(type, "project");
     const artefactName = name ?? entry?.name ?? "";
 
-    const id = await upsertArtefact(this.projectId, type, content, null, artefactName);
+    const id = await this.artefactStore.upsertArtefact(this.projectId, type, content, null, artefactName);
 
     const mapKey = this.featureId ? `project:${type}` : type;
     this.artefactEntries.set(mapKey, {
@@ -184,7 +177,7 @@ export class ContextManager {
   }
 
   async deleteArtefactById(id: string) {
-    await deleteArtefactById(id);
+    await this.artefactStore.deleteArtefactById(id);
     for (const [key, entry] of this.artefactEntries.entries()) {
       if (entry.id === id) {
         this.artefactEntries.delete(key);
@@ -305,13 +298,13 @@ export class ContextManager {
         this.artefactEntries.delete(key);
       }
     }
-    await deleteDiagramArtefacts(this.projectId, this.featureId ?? null);
+    await this.artefactStore.deleteDiagramArtefacts(this.projectId, this.featureId ?? null);
   }
 
   async clearSingleDiagram(diagramType: string) {
     const fullType = `diagram:${diagramType}`;
     this.artefactEntries.delete(fullType);
-    await deleteArtefact(this.projectId, fullType, this.featureId ?? null);
+    await this.artefactStore.deleteArtefact(this.projectId, fullType, this.featureId ?? null);
   }
 
   private async maybeSummarise() {

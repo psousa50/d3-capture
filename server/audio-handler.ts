@@ -2,8 +2,8 @@ import type { Server } from "socket.io";
 import { TranscriptAccumulator } from "./transcript-accumulator";
 import { ContextManager } from "./context-manager";
 import { GenerationOrchestrator } from "./generation-orchestrator";
-import { insertChunk } from "./db/repositories/transcripts";
-import { insertDocument } from "./db/repositories/documents";
+import type { MeetingStore } from "./plugins/types/meeting-store";
+import type { ArtefactStore } from "./plugins/types/artefact-store";
 import { getSTTProvider, type STTProvider, type STTStream } from "./stt";
 import { logger } from "./logger";
 
@@ -19,6 +19,7 @@ export class AudioHandler {
   private io: Server;
   private room: string;
   private meetingId: string;
+  private meetingStore: MeetingStore;
   private accumulator: TranscriptAccumulator;
   private contextManager: ContextManager;
   private orchestrator: GenerationOrchestrator;
@@ -26,14 +27,15 @@ export class AudioHandler {
   private nextSpeakerIndex = 0;
   private sttProvider: STTProvider | null = null;
 
-  constructor(io: Server, room: string, projectId: string, meetingId: string, featureId: string | null) {
+  constructor(io: Server, room: string, projectId: string, meetingId: string, featureId: string | null, meetingStore: MeetingStore, artefactStore: ArtefactStore) {
     this.io = io;
     this.room = room;
     this.meetingId = meetingId;
-    this.contextManager = new ContextManager(projectId, meetingId, featureId);
-    this.orchestrator = new GenerationOrchestrator(this.io, this.room, meetingId, this.contextManager);
+    this.meetingStore = meetingStore;
+    this.contextManager = new ContextManager(projectId, meetingId, featureId, artefactStore, meetingStore);
+    this.orchestrator = new GenerationOrchestrator(this.io, this.room, meetingId, this.contextManager, meetingStore);
 
-    this.accumulator = new TranscriptAccumulator(meetingId, (transcript) => {
+    this.accumulator = new TranscriptAccumulator(meetingId, meetingStore, (transcript) => {
       this.contextManager.addTranscript(transcript);
       this.orchestrator.trigger(transcript);
       this.orchestrator.triggerGuidance();
@@ -109,7 +111,7 @@ export class AudioHandler {
   async handleTextInput(text: string, userName?: string | null) {
     const now = Date.now();
     const speaker = userName || "You";
-    const row = await insertChunk(this.meetingId, text, speaker, now);
+    const row = await this.meetingStore.insertChunk(this.meetingId, text, speaker, now);
 
     this.emit("live-transcript", { id: row.id, text, isFinal: true, speaker, timestamp: now });
 
@@ -126,7 +128,7 @@ export class AudioHandler {
   }
 
   async handleTranscriptImport(text: string, name?: string) {
-    const doc = await insertDocument(this.meetingId, text, name);
+    const doc = await this.meetingStore.insertDocument(this.meetingId, text, name);
     this.emit("document-added", { id: doc.id, content: doc.content, createdAt: doc.created_at, name: doc.name, docNumber: doc.doc_number });
 
     const now = Date.now();

@@ -1,30 +1,40 @@
 import { NextResponse } from "next/server";
-import { getFeature, deleteFeature } from "../../../../../../../server/db/repositories/features";
-import { getFeatureArtefacts } from "../../../../../../../server/db/repositories/artefacts";
+import type { ProjectStore } from "../../../../../../../server/plugins/types/project-store";
+import type { ArtefactStore } from "../../../../../../../server/plugins/types/artefact-store";
+import { getProjectStore, getArtefactStore } from "../../../../../../../server/plugins/registry";
 
-export async function GET(_request: Request, { params }: { params: Promise<{ projectId: string; featureId: string }> }) {
-  const { projectId, featureId } = await params;
-  const feature = await getFeature(featureId);
-  if (!feature || feature.project_id !== projectId) {
-    return NextResponse.json({ error: "Feature not found" }, { status: 404 });
-  }
+type Params = { params: Promise<{ projectId: string; featureId: string }> };
 
-  const artefactRows = await getFeatureArtefacts(projectId, featureId);
-  const artefacts: Record<string, string> = {};
-  for (const row of artefactRows) {
-    artefacts[row.type] = row.content;
-  }
+export function makeGET(projects: ProjectStore, artefacts: ArtefactStore) {
+  return async (_request: Request, { params }: Params) => {
+    const { projectId, featureId } = await params;
+    const feature = await projects.getFeature(featureId);
+    if (!feature || feature.project_id !== projectId) {
+      return NextResponse.json({ error: "Feature not found" }, { status: 404 });
+    }
 
-  return NextResponse.json({ ...feature, artefacts });
+    const artefactRows = await artefacts.getFeatureArtefacts(projectId, featureId);
+    const artefactMap: Record<string, string> = {};
+    for (const row of artefactRows) {
+      artefactMap[row.type] = row.content;
+    }
+
+    return NextResponse.json({ ...feature, artefacts: artefactMap });
+  };
 }
 
-export async function DELETE(_request: Request, { params }: { params: Promise<{ projectId: string; featureId: string }> }) {
-  const { featureId } = await params;
-  const feature = await getFeature(featureId);
-  if (!feature) {
-    return NextResponse.json({ error: "Feature not found" }, { status: 404 });
-  }
+export function makeDELETE(store: ProjectStore) {
+  return async (_request: Request, { params }: Params) => {
+    const { featureId } = await params;
+    const feature = await store.getFeature(featureId);
+    if (!feature) {
+      return NextResponse.json({ error: "Feature not found" }, { status: 404 });
+    }
 
-  await deleteFeature(featureId);
-  return new NextResponse(null, { status: 204 });
+    await store.deleteFeature(featureId);
+    return new NextResponse(null, { status: 204 });
+  };
 }
+
+export const GET = makeGET(getProjectStore(), getArtefactStore());
+export const DELETE = makeDELETE(getProjectStore());

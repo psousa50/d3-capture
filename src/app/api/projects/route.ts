@@ -1,14 +1,22 @@
 import { NextResponse } from "next/server";
-import { listProjects, createProject } from "../../../../server/db/repositories/projects";
+import type { ProjectStore } from "../../../../server/plugins/types/project-store";
+import { getProjectStore } from "../../../../server/plugins/registry";
 
-export async function GET() {
-  return NextResponse.json(await listProjects());
+export function makeGET(store: ProjectStore) {
+  return async () => {
+    return NextResponse.json(await store.listProjects());
+  };
 }
 
-export async function POST(request: Request) {
-  const { name } = await request.json();
-  if (!name || typeof name !== "string") {
-    return NextResponse.json({ error: "name is required" }, { status: 400 });
-  }
-  return NextResponse.json(await createProject(name));
+export function makePOST(store: ProjectStore) {
+  return async (request: Request) => {
+    const { name } = await request.json();
+    if (!name || typeof name !== "string") {
+      return NextResponse.json({ error: "name is required" }, { status: 400 });
+    }
+    return NextResponse.json(await store.createProject(name));
+  };
 }
+
+export const GET = makeGET(getProjectStore());
+export const POST = makePOST(getProjectStore());

@@ -1,21 +1,33 @@
 import { Generator, GenerateOptions } from "../types";
-import { loadPrompt, fillPlaceholders } from "../prompts";
+import { fillPlaceholders } from "../prompts";
 import { getProviderForGenerator } from "../../server/llm/config";
+import { getTemplateStore } from "../../server/plugins/registry";
 
-const CREATE_PROMPT = loadPrompt(new URL("./prompts/create.md", import.meta.url));
-const UPDATE_PROMPT = loadPrompt(new URL("./prompts/update.md", import.meta.url));
-const SPEC_TEMPLATE = loadPrompt(new URL("./prompts/spec.md", import.meta.url));
+let templates: { create: string; update: string; template: string } | null = null;
+
+async function loadTemplates() {
+  if (templates) return templates;
+  const store = getTemplateStore();
+  const [create, update, template] = await Promise.all([
+    store.getTemplate("spec/create"),
+    store.getTemplate("spec/update"),
+    store.getTemplate("spec/template"),
+  ]);
+  templates = { create, update, template };
+  return templates;
+}
 
 export class SpecGenerator implements Generator {
   type = "spec";
 
   async *generate({ context, currentContent, artefactStates }: GenerateOptions): AsyncIterable<string> {
+    const t = await loadTemplates();
     const provider = getProviderForGenerator("spec");
     const isUpdate = !!currentContent;
 
-    const prompt = fillPlaceholders(isUpdate ? UPDATE_PROMPT : CREATE_PROMPT, {
+    const prompt = fillPlaceholders(isUpdate ? t.update : t.create, {
       TRANSCRIPT: context,
-      TEMPLATE: SPEC_TEMPLATE,
+      TEMPLATE: t.template,
       EXISTING_SPEC: currentContent || "",
       PROJECT_CONTEXT: artefactStates?.["context"] || "_No project context available_",
     });

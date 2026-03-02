@@ -1,9 +1,20 @@
 import { Generator, GenerateOptions } from "../types";
-import { loadPrompt, fillPlaceholders } from "../prompts";
+import { fillPlaceholders } from "../prompts";
 import { getProviderForGenerator } from "../../server/llm/config";
+import { getTemplateStore } from "../../server/plugins/registry";
 
-const CREATE_PROMPT = loadPrompt(new URL("./prompts/create.md", import.meta.url));
-const STORY_TEMPLATE = loadPrompt(new URL("./prompts/story.md", import.meta.url));
+let templates: { create: string; template: string } | null = null;
+
+async function loadTemplates() {
+  if (templates) return templates;
+  const store = getTemplateStore();
+  const [create, template] = await Promise.all([
+    store.getTemplate("stories/create"),
+    store.getTemplate("stories/template"),
+  ]);
+  templates = { create, template };
+  return templates;
+}
 
 export class StoryGenerator implements Generator {
   type = "stories";
@@ -12,11 +23,12 @@ export class StoryGenerator implements Generator {
     const spec = artefactStates?.["spec"];
     if (!spec) return;
 
+    const t = await loadTemplates();
     const provider = getProviderForGenerator("stories");
 
-    const prompt = fillPlaceholders(CREATE_PROMPT, {
+    const prompt = fillPlaceholders(t.create, {
       SPEC: spec,
-      STORY_TEMPLATE: STORY_TEMPLATE,
+      STORY_TEMPLATE: t.template,
     });
 
     yield* provider.stream({

@@ -1,24 +1,34 @@
 import { NextResponse } from "next/server";
-import { createMeeting, listMeetings } from "../../../../../../server/db/repositories/meetings";
-import { getProject } from "../../../../../../server/db/repositories/projects";
+import type { ProjectStore } from "../../../../../../server/plugins/types/project-store";
+import type { MeetingStore } from "../../../../../../server/plugins/types/meeting-store";
+import { getMeetingStore, getProjectStore } from "../../../../../../server/plugins/registry";
 
-export async function GET(_request: Request, { params }: { params: Promise<{ projectId: string }> }) {
-  const { projectId } = await params;
-  return NextResponse.json(await listMeetings(projectId));
+type Params = { params: Promise<{ projectId: string }> };
+
+export function makeGET(store: MeetingStore) {
+  return async (_request: Request, { params }: Params) => {
+    const { projectId } = await params;
+    return NextResponse.json(await store.listMeetings(projectId));
+  };
 }
 
-export async function POST(request: Request, { params }: { params: Promise<{ projectId: string }> }) {
-  const { projectId } = await params;
-  const project = await getProject(projectId);
-  if (!project) {
-    return NextResponse.json({ error: "Project not found" }, { status: 404 });
-  }
+export function makePOST(projects: ProjectStore, meetings: MeetingStore) {
+  return async (request: Request, { params }: Params) => {
+    const { projectId } = await params;
+    const project = await projects.getProject(projectId);
+    if (!project) {
+      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    }
 
-  let featureId: string | undefined;
-  try {
-    const body = await request.json();
-    featureId = body?.featureId;
-  } catch {}
+    let featureId: string | undefined;
+    try {
+      const body = await request.json();
+      featureId = body?.featureId;
+    } catch {}
 
-  return NextResponse.json(await createMeeting(projectId, featureId));
+    return NextResponse.json(await meetings.createMeeting(projectId, featureId));
+  };
 }
+
+export const GET = makeGET(getMeetingStore());
+export const POST = makePOST(getProjectStore(), getMeetingStore());

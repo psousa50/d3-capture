@@ -9,9 +9,8 @@ import { routeTranscript } from "./routing";
 import { AccumulatedTranscript } from "./transcript-accumulator";
 import { logger } from "./logger";
 import { generateGuidanceItems } from "../modules/guidance/generator";
-import { getGuidanceItems, insertGuidanceItems, resolveGuidanceItem } from "./db/repositories/guidance";
+import type { MeetingStore } from "./plugins/types/meeting-store";
 import { mentionsNova, runAssistant } from "../modules/assistant/generator";
-import { insertChunk } from "./db/repositories/transcripts";
 
 const log = logger.child({ module: "orchestrator" });
 
@@ -30,6 +29,7 @@ function slugify(name: string): string {
 
 export class GenerationOrchestrator {
   private contextManager: ContextManager;
+  private meetingStore: MeetingStore;
   private io: Server;
   private room: string;
   private meetingId: string;
@@ -39,11 +39,12 @@ export class GenerationOrchestrator {
   private guidanceRunning = false;
   private assistantRunning = false;
 
-  constructor(io: Server, room: string, meetingId: string, contextManager: ContextManager) {
+  constructor(io: Server, room: string, meetingId: string, contextManager: ContextManager, meetingStore: MeetingStore) {
     this.io = io;
     this.room = room;
     this.meetingId = meetingId;
     this.contextManager = contextManager;
+    this.meetingStore = meetingStore;
   }
 
   private isFeatureScoped(): boolean {
@@ -169,16 +170,16 @@ export class GenerationOrchestrator {
       const context = this.contextManager.buildPromptContext("guidance");
       if (!context.trim()) return;
 
-      const existing = await getGuidanceItems(this.meetingId);
+      const existing = await this.meetingStore.getGuidanceItems(this.meetingId);
       const result = await generateGuidanceItems(context, existing);
 
       for (const id of result.resolve) {
-        await resolveGuidanceItem(id);
+        await this.meetingStore.resolveGuidanceItem(id);
         this.emit("guidance-item-resolved", { id });
       }
 
       if (result.add.length > 0) {
-        const inserted = await insertGuidanceItems(this.meetingId, result.add);
+        const inserted = await this.meetingStore.insertGuidanceItems(this.meetingId, result.add);
         this.emit("guidance-items-added", { items: inserted });
       }
 
@@ -205,7 +206,7 @@ export class GenerationOrchestrator {
       const answer = await runAssistant(context, artefactStates);
       if (!answer) return;
 
-      const row = await insertChunk(this.meetingId, answer, "Nova", Date.now());
+      const row = await this.meetingStore.insertChunk(this.meetingId, answer, "Nova", Date.now());
       this.emit("live-transcript", { id: row.id, text: answer, isFinal: true, speaker: "Nova" });
       log.info("Nova responded");
     } catch (err) {

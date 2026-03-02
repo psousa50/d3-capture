@@ -1,12 +1,8 @@
 import type { Server, Socket } from "socket.io";
 import { AudioHandler } from "./audio-handler";
-import { endMeeting } from "./db/repositories/meetings";
-import { getChunks, updateChunk, deleteChunk } from "./db/repositories/transcripts";
-import { getProjectArtefacts, getFeatureArtefacts, getArtefact } from "./db/repositories/artefacts";
-import { getProject } from "./db/repositories/projects";
-import { getFeature } from "./db/repositories/features";
-import { getDocuments, deleteDocument } from "./db/repositories/documents";
-import { getGuidanceItems, resolveGuidanceItem, unresolveGuidanceItem } from "./db/repositories/guidance";
+import type { ProjectStore } from "./plugins/types/project-store";
+import type { MeetingStore } from "./plugins/types/meeting-store";
+import type { ArtefactStore } from "./plugins/types/artefact-store";
 import { logger } from "./logger";
 
 const DISCONNECT_GRACE_MS = 30_000;
@@ -23,10 +19,16 @@ interface ActiveMeeting {
 
 export class MeetingManager {
   private io: Server;
+  private projectStore: ProjectStore;
+  private meetingStore: MeetingStore;
+  private artefactStore: ArtefactStore;
   private meetings = new Map<string, ActiveMeeting>();
 
-  constructor(io: Server) {
+  constructor(io: Server, projectStore: ProjectStore, meetingStore: MeetingStore, artefactStore: ArtefactStore) {
     this.io = io;
+    this.projectStore = projectStore;
+    this.meetingStore = meetingStore;
+    this.artefactStore = artefactStore;
   }
 
   joinAsProducer(socket: Socket, projectId: string, meetingId: string, featureId: string | null) {
@@ -66,15 +68,15 @@ export class MeetingManager {
       active.handler.handleTextInput(text, socket.data.userName);
     });
 
-    socket.on("edit-transcript", async (data: { id: number; text: string }) => {
+    socket.on("edit-transcript", async (data: { id: string; text: string }) => {
       if (!data?.id || typeof data.text !== "string") return;
-      await updateChunk(data.id, data.text.trim());
+      await this.meetingStore.updateChunk(data.id, data.text.trim());
       this.io.to(room).emit("transcript-edited", { id: data.id, text: data.text.trim() });
     });
 
-    socket.on("delete-transcript", async (data: { id: number }) => {
+    socket.on("delete-transcript", async (data: { id: string }) => {
       if (!data?.id) return;
-      await deleteChunk(data.id);
+      await this.meetingStore.deleteChunk(data.id);
       this.io.to(room).emit("transcript-deleted", { id: data.id });
     });
 
@@ -104,19 +106,19 @@ export class MeetingManager {
 
     socket.on("delete-document", async (data: { id: string }) => {
       if (!data?.id) return;
-      await deleteDocument(data.id);
+      await this.meetingStore.deleteDocument(data.id);
       this.io.to(room).emit("document-deleted", { id: data.id });
     });
 
     socket.on("resolve-guidance", async (data: { id: string }) => {
       if (!data?.id) return;
-      await resolveGuidanceItem(data.id);
+      await this.meetingStore.resolveGuidanceItem(data.id);
       this.io.to(room).emit("guidance-item-resolved", { id: data.id });
     });
 
     socket.on("unresolve-guidance", async (data: { id: string }) => {
       if (!data?.id) return;
-      await unresolveGuidanceItem(data.id);
+      await this.meetingStore.unresolveGuidanceItem(data.id);
       this.io.to(room).emit("guidance-item-unresolved", { id: data.id });
     });
 
@@ -179,7 +181,7 @@ export class MeetingManager {
     if (existing) return existing;
 
     const room = this.roomKey(meetingId);
-    const handler = new AudioHandler(this.io, room, projectId, meetingId, featureId);
+    const handler = new AudioHandler(this.io, room, projectId, meetingId, featureId, this.meetingStore, this.artefactStore);
     handler.start();
 
     const active: ActiveMeeting = {
@@ -198,16 +200,16 @@ export class MeetingManager {
 
   private async sendSnapshot(socket: Socket, meetingId: string, projectId: string, featureId: string | null) {
     const artefactPromise = featureId
-      ? getFeatureArtefacts(projectId, featureId)
-      : getProjectArtefacts(projectId);
+      ? this.artefactStore.getFeatureArtefacts(projectId, featureId)
+      : this.artefactStore.getProjectArtefacts(projectId);
 
     const [chunks, artefactRows, docs, guidanceRows, project, feature] = await Promise.all([
-      getChunks(meetingId),
+      this.meetingStore.getChunks(meetingId),
       artefactPromise,
-      getDocuments(meetingId),
-      getGuidanceItems(meetingId),
-      getProject(projectId),
-      featureId ? getFeature(featureId) : Promise.resolve(undefined),
+      this.meetingStore.getDocuments(meetingId),
+      this.meetingStore.getGuidanceItems(meetingId),
+      this.projectStore.getProject(projectId),
+      featureId ? this.projectStore.getFeature(featureId) : Promise.resolve(undefined),
     ]);
 
     const transcript = chunks.map((c) => ({
@@ -226,7 +228,7 @@ export class MeetingManager {
     }
 
     if (featureId) {
-      const contextRow = await getArtefact(projectId, "context");
+      const contextRow = await this.artefactStore.getArtefact(projectId, "context");
       if (contextRow) {
         artefacts["context"] = contextRow.content;
         artefactMeta["context"] = { id: contextRow.id, name: contextRow.name };
@@ -255,7 +257,7 @@ export class MeetingManager {
 
     logger.child({ module: "meeting", meetingId }).info("shutting down");
     active.handler.stop();
-    await endMeeting(meetingId);
+    await this.meetingStore.endMeeting(meetingId);
     this.meetings.delete(meetingId);
   }
 

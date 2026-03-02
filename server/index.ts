@@ -8,8 +8,11 @@ import { parse } from "url";
 import { Server } from "socket.io";
 import { getToken } from "next-auth/jwt";
 import { MeetingManager } from "./meeting-manager";
-import { getMeeting } from "./db/repositories/meetings";
-import { getProject } from "./db/repositories/projects";
+import { registerProjectStore, registerMeetingStore, registerArtefactStore, registerTemplateStore } from "./plugins/registry";
+import { PrismaProjectStore } from "./plugins/prisma/project-store";
+import { PrismaMeetingStore } from "./plugins/prisma/meeting-store";
+import { PrismaArtefactStore } from "./plugins/prisma/artefact-store";
+import { FilesystemTemplateStore } from "./plugins/filesystem/template-store";
 import prisma from "./db/client";
 import { logger } from "./logger";
 
@@ -26,6 +29,16 @@ const useHttps = existsSync(certPath) && existsSync(keyPath);
 
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
+
+const projectStore = new PrismaProjectStore();
+const meetingStore = new PrismaMeetingStore();
+const artefactStore = new PrismaArtefactStore();
+const templateStore = new FilesystemTemplateStore();
+
+registerProjectStore(projectStore);
+registerMeetingStore(meetingStore);
+registerArtefactStore(artefactStore);
+registerTemplateStore(templateStore);
 
 prisma.$connect().then(() => app.prepare()).then(() => {
   const requestHandler = (req: any, res: any) => {
@@ -67,7 +80,7 @@ prisma.$connect().then(() => app.prepare()).then(() => {
     });
   }
 
-  const meetingManager = new MeetingManager(io);
+  const meetingManager = new MeetingManager(io, projectStore, meetingStore, artefactStore);
 
   io.on("connection", async (socket) => {
     const { meetingId, role } = socket.handshake.query as Record<string, string>;
@@ -78,14 +91,14 @@ prisma.$connect().then(() => app.prepare()).then(() => {
       return;
     }
 
-    const meeting = await getMeeting(meetingId);
+    const meeting = await meetingStore.getMeeting(meetingId);
     if (!meeting) {
       socket.emit("error", "Meeting not found");
       socket.disconnect();
       return;
     }
 
-    const project = await getProject(meeting.project_id);
+    const project = await projectStore.getProject(meeting.project_id);
     if (!project) {
       socket.emit("error", "Project not found");
       socket.disconnect();

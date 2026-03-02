@@ -1,4 +1,4 @@
-import { insertChunk } from "./db/repositories/transcripts";
+import type { MeetingStore } from "./plugins/types/meeting-store";
 import { logger } from "./logger";
 
 const log = logger.child({ module: "transcript" });
@@ -27,12 +27,14 @@ export class TranscriptAccumulator {
   private onEmit: TranscriptCallback;
   private startTime: number = Date.now();
   private meetingId: string;
+  private meetingStore: MeetingStore;
   private silenceTimer: ReturnType<typeof setTimeout> | null = null;
   private lastEmitTime: number = Date.now();
   private lastChunkTime = new Map<string, number>();
 
-  constructor(meetingId: string, onEmit: TranscriptCallback) {
+  constructor(meetingId: string, meetingStore: MeetingStore, onEmit: TranscriptCallback) {
     this.meetingId = meetingId;
+    this.meetingStore = meetingStore;
     this.onEmit = onEmit;
   }
 
@@ -49,7 +51,7 @@ export class TranscriptAccumulator {
     if (!chunk.isFinal) return;
 
     this.chunks.push(chunk);
-    insertChunk(this.meetingId, chunk.text, chunk.speaker ?? null, chunk.timestamp).catch((err) => log.error({ err }, "failed to insert chunk"));
+    this.meetingStore.insertChunk(this.meetingId, chunk.text, chunk.speaker ?? null, chunk.timestamp).catch((err) => log.error({ err }, "failed to insert chunk"));
 
     if (chunk.speaker) {
       this.lastChunkTime.set(chunk.speaker, Date.now());

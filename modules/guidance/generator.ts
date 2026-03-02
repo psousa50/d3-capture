@@ -1,8 +1,14 @@
-import { loadPrompt } from "../prompts";
 import { getProviderForGenerator } from "../../server/llm/config";
-import type { GuidanceItem } from "../../server/db/repositories/guidance";
+import { getTemplateStore } from "../../server/plugins/registry";
+import type { GuidanceItem } from "../../server/plugins/types/meeting-store";
 
-const SYSTEM_PROMPT = loadPrompt(new URL("./prompts/system.md", import.meta.url));
+let systemPrompt: string | null = null;
+
+async function loadSystemPrompt() {
+  if (systemPrompt) return systemPrompt;
+  systemPrompt = await getTemplateStore().getTemplate("guidance/system");
+  return systemPrompt;
+}
 
 interface RawGuidanceItem {
   type: "question" | "suggestion";
@@ -50,6 +56,7 @@ export async function generateGuidanceItems(
   context: string,
   existingItems: GuidanceItem[],
 ): Promise<GuidanceGenerationResult> {
+  const prompt = await loadSystemPrompt();
   const provider = getProviderForGenerator("guidance");
 
   const parts: string[] = [context];
@@ -66,7 +73,7 @@ export async function generateGuidanceItems(
 
   let result = "";
   for await (const chunk of provider.stream({
-    system: SYSTEM_PROMPT,
+    system: prompt,
     messages: [{ role: "user", content: parts.join("\n") }],
     maxTokens: 1024,
   })) {

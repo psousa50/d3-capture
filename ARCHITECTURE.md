@@ -29,9 +29,13 @@ server/
 │   ├── openai.ts                OpenAI SDK wrapper (default: gpt-4o)
 │   ├── openai-compatible.ts     Generic OpenAI-compatible provider (Groq)
 │   └── claude-code.ts           Claude Code CLI provider (uses Max subscription via `claude -p`)
+├── plugins/
+│   ├── types/                   Store interfaces: ProjectStore, MeetingStore, ArtefactStore, TemplateStore
+│   ├── registry.ts              Singleton registry: register/get for each store type
+│   ├── prisma/                  PostgreSQL implementations wrapping Prisma client
+│   └── filesystem/              FilesystemTemplateStore: reads prompt templates from modules/*/prompts/ files
 ├── db/
-│   ├── client.ts                Prisma client singleton with BigInt-to-Number extension
-│   └── repositories/            CRUD per entity: projects, features, meetings, transcripts, artefacts, documents, guidance
+│   └── client.ts                Prisma client singleton with BigInt-to-Number extension
 └── ws.d.ts
 
 modules/
@@ -210,7 +214,7 @@ Google OAuth via NextAuth.js v4. `NEXTAUTH_SECRET` + `GOOGLE_CLIENT_ID` + `GOOGL
 - **Tool-use routing** — a single LLM call with tool definitions replaces the triage classifier; scope is enforced by which tools are exposed (feature meetings get `update_spec` and `update_project_diagram`); diagrams are referenced by database ID
 - **Module system** — each artefact type is a self-contained module in `modules/` with prompts, generator, and definition; registry-driven discovery
 - **Prisma ORM** — schema in `prisma/schema.prisma`, migrations in `prisma/migrations/`, generated client in `src/generated/prisma`
-- **Repository pattern** — one module per DB entity in `server/db/repositories/`, thin wrappers over Prisma client
+- **Plugin-based storage** — four store interfaces (ProjectStore, MeetingStore, ArtefactStore, TemplateStore) in `server/plugins/types/`, with Prisma and filesystem implementations; backends are independently swappable via the singleton registry in `server/plugins/registry.ts`; stores registered at startup in `server/index.ts`
 - **Room-based broadcasting** — Socket.IO rooms per meeting (`meeting:{id}`)
 - **Guidance runs independently** — not gated by the artefact generation lock; lightweight JSON output parsed server-side, meeting-scoped
 - **Nova (AI assistant) runs independently** — triggered by name mention ("Nova"), uses Anthropic tool-use agent loop with web search; responses stored as transcript chunks (speaker="Nova")
