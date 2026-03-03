@@ -45,6 +45,7 @@ export class AnthropicProvider implements LLMProvider {
         description: t.description,
         input_schema: t.input_schema as Anthropic.Tool.InputSchema,
       })),
+      tool_choice: params.toolChoice === "any" ? { type: "any" } : { type: "auto" },
     });
 
     const toolCalls = response.content

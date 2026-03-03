@@ -51,6 +51,7 @@ export class OpenAIProvider implements LLMProvider {
           parameters: t.input_schema,
         },
       })),
+      tool_choice: params.toolChoice === "any" ? "required" : "auto",
     });
 
     const choice = response.choices[0];

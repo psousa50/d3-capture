@@ -35,10 +35,19 @@ When to call nothing:
 
 If no diagrams exist and the conversation contains enough substance about system design, data models, or user flows, consider creating initial diagrams.
 
-IMPORTANT: When in doubt, call tools rather than doing nothing. Missing an update is worse than triggering an unnecessary one.`;
+IMPORTANT RULES:
+- When in doubt, call tools rather than doing nothing. Missing an update is worse than triggering an unnecessary one.
+- NEVER respond with text. You are a classifier, not a conversational assistant. Your ONLY output is tool calls.
+- NEVER ask clarifying questions. Make your best judgement and call the appropriate tool.
+- If someone asks for "a diagram" without specifying the type, infer the most appropriate type from the project context and conversation.`;
 
 function buildProjectTools(artefacts: ArtefactInfo[]): ToolDefinition[] {
   const tools: ToolDefinition[] = [
+    {
+      name: "no_action",
+      description: "Call this when no artefact updates are needed (small talk, greetings, off-topic, filler).",
+      input_schema: { type: "object", properties: {}, required: [] },
+    },
     {
       name: "update_context",
       description: "Update the project context (vision, goals, scope, domain model)",
@@ -169,6 +178,7 @@ export async function routeTranscript(
     messages: [{ role: "user", content: userMessage }],
     tools,
     maxTokens: 512,
+    toolChoice: "any",
   });
 
   const result = emptyResult();

@@ -20,6 +20,7 @@ export interface ToolCallParams {
   messages: Message[];
   tools: ToolDefinition[];
   maxTokens?: number;
+  toolChoice?: "auto" | "any";
 }
 
 export interface ToolCall {

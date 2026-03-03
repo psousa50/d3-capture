@@ -17,6 +17,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.77.0",
     "@deepgram/sdk": "^4.11.3",
+    "@octokit/rest": "^22.0.1",
     "@prisma/adapter-pg": "^7.4.2",
     "@prisma/client": "^7.4.2",
     "@tailwindcss/typography": "^0.5.19",

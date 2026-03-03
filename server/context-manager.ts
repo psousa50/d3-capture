@@ -229,10 +229,20 @@ export class ContextManager {
       parts.push(`## Meeting conversation\n${allText}`);
     }
 
-    if (generatorType === "diagram" && excludeKey) {
-      const entry = this.artefactEntries.get(excludeKey);
-      if (entry) {
-        parts.push(`## Current diagram\n${entry.content}`);
+    if (generatorType === "diagram") {
+      const scope = this.featureId ? "feature" : "project";
+      const textArtefact = scope === "project"
+        ? this.artefactEntries.get("context")
+        : (this.artefactEntries.get("spec") ?? this.artefactEntries.get("context"));
+      if (textArtefact?.content) {
+        parts.unshift(`## Background\n${textArtefact.content}`);
+      }
+
+      if (excludeKey) {
+        const entry = this.artefactEntries.get(excludeKey);
+        if (entry) {
+          parts.push(`## Current diagram\n${entry.content}`);
+        }
       }
     }
 

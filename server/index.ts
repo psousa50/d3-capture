@@ -13,6 +13,9 @@ import { PrismaProjectStore } from "./plugins/prisma/project-store";
 import { PrismaMeetingStore } from "./plugins/prisma/meeting-store";
 import { PrismaArtefactStore } from "./plugins/prisma/artefact-store";
 import { FilesystemTemplateStore } from "./plugins/filesystem/template-store";
+import { GitHubMeetingStore } from "./plugins/github/meeting-store";
+import { GitHubArtefactStore } from "./plugins/github/artefact-store";
+import { GitHubTemplateStore } from "./plugins/github/template-store";
 import prisma from "./db/client";
 import { logger } from "./logger";
 
@@ -30,10 +33,14 @@ const useHttps = existsSync(certPath) && existsSync(keyPath);
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
+const backend = process.env.STORAGE_BACKEND ?? "prisma";
+
 const projectStore = new PrismaProjectStore();
-const meetingStore = new PrismaMeetingStore();
-const artefactStore = new PrismaArtefactStore();
-const templateStore = new FilesystemTemplateStore();
+
+const meetingStore = backend === "github" ? new GitHubMeetingStore() : new PrismaMeetingStore();
+const artefactStore = backend === "github" ? new GitHubArtefactStore() : new PrismaArtefactStore();
+const filesystemTemplateStore = new FilesystemTemplateStore();
+const templateStore = backend === "github" ? new GitHubTemplateStore(filesystemTemplateStore) : filesystemTemplateStore;
 
 registerProjectStore(projectStore);
 registerMeetingStore(meetingStore);
