@@ -12,6 +12,7 @@ export interface GenerateOptions {
   context: string;
   currentContent?: string;
   artefactStates?: Record<string, string>;
+  meetingScope?: "project" | "feature";
 }
 
 export interface Generator {

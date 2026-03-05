@@ -2,6 +2,12 @@
 description: Create a feature specification from the transcript below. Outputs a unified markdown document containing both Product and Technical sections. Fills only known information and marks uncertainties. No user interaction — runs to completion automatically.
 ---
 
+## Meeting Scope
+
+This is a **{{MEETING_SCOPE}}** meeting.
+
+---
+
 ## Project Background
 
 {{PROJECT_CONTEXT}}
@@ -26,7 +32,9 @@ Read the Input above and generate a complete specification using the Template be
 
 **The Project Background section is context only — use it to understand the project but do NOT reproduce it in the output.**
 
-**Derive the title from the input. Do not ask for confirmation.**
+**The Input may contain Reference Documents (uploaded files) and Conversation sections. Reference Documents are background material — use them for context but base the specification on what was discussed in the Conversation. The feature title and scope must come from the conversation, NOT from reference documents.**
+
+**Derive the title from the conversation. Do not ask for confirmation.**
 
 **CRITICAL RULES:**
 

@@ -28,6 +28,7 @@ export class ContextManager {
   private featureId: string | null;
   private artefactStore: ArtefactStore;
   private transcripts: AccumulatedTranscript[] = [];
+  private documents: { name: string; content: string }[] = [];
   private summary = "";
   private artefactEntries = new Map<string, ArtefactEntry>();
   private lastSummarisedAt: number = Date.now();
@@ -100,12 +101,7 @@ export class ContextManager {
     }
 
     for (const doc of docs) {
-      this.transcripts.push({
-        chunks: [{ text: doc.content, isFinal: true, timestamp: doc.created_at }],
-        fullText: doc.content,
-        startTime: doc.created_at,
-        endTime: doc.created_at,
-      });
+      this.documents.push({ name: doc.name, content: doc.content });
     }
   }
 
@@ -120,6 +116,10 @@ export class ContextManager {
   addTranscript(transcript: AccumulatedTranscript) {
     this.transcripts.push(transcript);
     this.maybeSummarise();
+  }
+
+  addDocument(name: string, content: string) {
+    this.documents.push({ name, content });
   }
 
   getArtefactSummary(): ArtefactInfo[] {
@@ -215,6 +215,13 @@ export class ContextManager {
     const ctx = this.getContext();
     const parts: string[] = [];
 
+    if (this.documents.length > 0) {
+      const docSections = this.documents
+        .map((d) => `### ${d.name}\n${d.content}`)
+        .join("\n\n");
+      parts.push(`## Reference Documents (background material — not the conversation)\n${docSections}`);
+    }
+
     if (ctx.summary) {
       parts.push(`## Earlier in the meeting (summary)\n${ctx.summary}`);
     }
@@ -287,7 +294,12 @@ export class ContextManager {
   }
 
   getFullTranscript(): string {
-    return this.transcripts.map((t) => t.fullText).join("\n\n");
+    const parts: string[] = [];
+    if (this.documents.length > 0) {
+      parts.push(this.documents.map((d) => d.content).join("\n\n"));
+    }
+    parts.push(this.transcripts.map((t) => t.fullText).join("\n\n"));
+    return parts.join("\n\n");
   }
 
   getConversationSummary(): string | undefined {

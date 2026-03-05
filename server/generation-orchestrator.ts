@@ -364,7 +364,7 @@ export class GenerationOrchestrator {
     this.emit("artefact-start", { artefactType: generator.type });
 
     try {
-      for await (const chunk of generator.generate({ context, currentContent, artefactStates })) {
+      for await (const chunk of generator.generate({ context, currentContent, artefactStates, meetingScope: this.getMeetingScope() })) {
         fullContent += chunk;
         this.emit("artefact-chunk", { artefactType: generator.type, chunk });
       }

@@ -20,7 +20,7 @@ async function loadTemplates() {
 export class SpecGenerator implements Generator {
   type = "spec";
 
-  async *generate({ context, currentContent, artefactStates }: GenerateOptions): AsyncIterable<string> {
+  async *generate({ context, currentContent, artefactStates, meetingScope }: GenerateOptions): AsyncIterable<string> {
     const t = await loadTemplates();
     const provider = getProviderForGenerator("spec");
     const isUpdate = !!currentContent;
@@ -30,6 +30,7 @@ export class SpecGenerator implements Generator {
       TEMPLATE: t.template,
       EXISTING_SPEC: currentContent || "",
       PROJECT_CONTEXT: artefactStates?.["context"] || "_No project context available_",
+      MEETING_SCOPE: meetingScope || "feature",
     });
 
     yield* provider.stream({

@@ -38,6 +38,8 @@ Read the Existing Spec and New Information sections above, then output the full 
 
 **The Project Background section is context only — use it to understand the project but do NOT reproduce it in the output.**
 
+**The New Information may contain Reference Documents (uploaded files) and Conversation sections. Reference Documents are background material — base updates on what was discussed in the Conversation.**
+
 **CRITICAL — Non-Greedy Updates:**
 
 Update ONLY sections explicitly addressed in the New Information.

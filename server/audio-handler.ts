@@ -131,6 +131,8 @@ export class AudioHandler {
     const doc = await this.meetingStore.insertDocument(this.meetingId, text, name);
     this.emit("document-added", { id: doc.id, content: doc.content, createdAt: doc.created_at, name: doc.name, docNumber: doc.doc_number });
 
+    this.contextManager.addDocument(doc.name, text);
+
     const now = Date.now();
     const transcript = {
       chunks: [{ text, isFinal: true as const, timestamp: now }],
@@ -139,7 +141,6 @@ export class AudioHandler {
       endTime: now,
     };
 
-    this.contextManager.addTranscript(transcript);
     await this.orchestrator.triggerAll(transcript);
     this.orchestrator.triggerGuidance();
   }
