@@ -1,4 +1,5 @@
-Read ARCHITECTURE.md before planning features.
-Update ARCHITECTURE.md when making changes that affect its content.
-Update ARCHITECTURE.excalidraw when making changes that affect its content.
+Read docs/ARCHITECTURE.md before planning features.
+
+Update docs/ARCHITECTURE.md when making changes that affect its content.
+Update docs/ARCHITECTURE.excalidraw when making changes that affect its content.
 
